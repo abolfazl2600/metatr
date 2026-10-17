@@ -92,3 +92,20 @@ python -m metatr.futures_cli --product-id ACTUAL_FUTURES_PRODUCT_ID --timeframe 
 ```
 
 Read [docs/FUTURES_ARCHITECTURE.md](docs/FUTURES_ARCHITECTURE.md) before using this module. **No real orders, account authentication, streaming service, MT5 futures importer or trained AI model exists yet**; output only provides research signals as JSON. Real Coinbase accessibility from your region still needs to be verified.
+
+
+## Versioned SQLite futures research store (V2 foundation)
+
+`metatr.futures_store.FuturesSQLiteStore` is a local, read-only-data persistence
+layer for verified futures candles, immutable raw API snapshots, associated
+contract metadata, and schema version 1. It uses standard-library SQLite and
+requires no additional service. Data conflicts, malformed timestamps, stale
+(open) candles and unknown schema versions fail safely. It has **no orders**,
+private API access or autonomous collection loop.
+
+Usage, a precise data contract and migration limitations:
+[docs/FUTURES_STORAGE.md](docs/FUTURES_STORAGE.md).
+
+> The Coinbase live-probe CLI remains network-only and does not yet
+> automatically persist its candle response. This next integration will attach
+> raw response provenance before allowing production historical backfill.
