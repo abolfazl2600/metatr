@@ -47,7 +47,9 @@ def _capture_with_retry(feed, *, wait=time.sleep):
             return feed.capture_candles(MARKET.product_id, "M15", 80)
         except HTTPError as exc:
             if exc.code not in (500, 502, 503, 504) or attempt == 2:
-                raise ValueError(f"PUBLIC_HTTP_{exc.code}: Coinbase product/candles unavailable") from None
+                raise ValueError(
+                    f"PUBLIC_HTTP_{exc.code}: Coinbase product/candles unavailable"
+                ) from None
         except (URLError, TimeoutError, ConnectionError):
             if attempt == 2:
                 raise ValueError(
