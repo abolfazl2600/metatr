@@ -17,3 +17,6 @@ data/raw/
 data/private/
 models/
 reports/private/
+
+# Live local signal snapshots / credentials never go to GitHub
+runtime/
