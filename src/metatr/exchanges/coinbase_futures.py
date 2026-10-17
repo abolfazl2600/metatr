@@ -60,10 +60,15 @@ def bitcoin_future_kind(product: dict) -> str | None:
         ("quote_display_symbol", "USD"),
     ):
         value = product.get(field)
-        if value is not None and (
+        if value not in (None, "") and (
             not isinstance(value, str) or value.upper() != expected
         ):
             return None
+    root_unit = details.get("contract_root_unit")
+    if root_unit not in (None, "") and (
+        not isinstance(root_unit, str) or root_unit.upper() != "BTC"
+    ):
+        return None
     return BTC_CDE_ROOTS[root]
 
 
