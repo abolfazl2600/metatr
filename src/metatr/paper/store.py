@@ -483,6 +483,15 @@ class PaperStore:
                     "SELECT * FROM paper_orders WHERE account=? ORDER BY rowid", (account,)
                 )
             ]
+            result["cash_events"] = [
+                dict(r)
+                for r in db.execute(
+                    "SELECT c.*,a.occurred_at FROM cash_ledger c "
+                    "JOIN audit_events a USING(event_id) "
+                    "WHERE c.account=? ORDER BY a.sequence",
+                    (account,),
+                )
+            ]
             result["execution"] = "PAPER_ONLY"
             return result
 
