@@ -371,6 +371,8 @@ class PaperRiskEngine:
         decision = evaluate(None, state, market_state, policy, contract, now_utc, allow_halted=True)
         if decision.action != "APPROVE":
             raise ValueError(f"Reset health check failed: {decision.reasons}")
+        approval = {"type": "RESET_APPROVAL", **decision.to_dict(), "operator_reason": reason}
+        self.store.append(account, "RISK_EVENT", digest(approval), approval, now_utc)
         self.store.reset_halt(
             account, reason + " policy=" + policy.fingerprint, at_utc=now_utc, health_checked=True
         )

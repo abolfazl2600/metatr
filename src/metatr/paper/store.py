@@ -7,6 +7,7 @@ import re
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import asdict, replace
+from datetime import timedelta
 from decimal import localcontext
 from pathlib import Path
 
@@ -83,6 +84,11 @@ class PaperStore:
                 db.execute(f"PRAGMA application_id={APPLICATION_ID}")
             elif version != SCHEMA_VERSION or app != APPLICATION_ID:
                 raise ValueError("Unknown or non-paper SQLite schema")
+            names = {row[0] for row in db.execute("SELECT name FROM sqlite_master")}
+            if not set((*TABLES, "audit_events", "audit_no_update", "audit_no_delete")) <= names:
+                raise ValueError("Incomplete paper SQLite schema/append-only guards")
+            if db.execute("PRAGMA foreign_key_check").fetchone() is not None:
+                raise ValueError("Paper SQLite foreign-key inconsistency")
 
     @contextmanager
     def connection(self):
@@ -191,7 +197,12 @@ class PaperStore:
                 raise ValueError("Risk approval and nonhalted account required")
             db.execute(
                 "UPDATE paper_orders SET status=?,approval_json=?,reason=? WHERE intent_id=?",
-                (p["status"], canonical(p["approval"]), p["reason"], p["intent_id"]),
+                (
+                    p["status"],
+                    canonical(p["approval"]) if p["approval"] else row["approval_json"],
+                    p["reason"],
+                    p["intent_id"],
+                ),
             )
         elif kind == "FILL":
             order = db.execute(
@@ -404,6 +415,10 @@ class PaperStore:
             "side": side,
             "quantity": number(decimal(quantity)),
             "data_sha256": data_sha256,
+            "expires_at_utc": (
+                stamp(closed)
+                + timedelta(seconds=2 * TIMEFRAME_SECONDS[parse_market(state["market"]).timeframe])
+            ).isoformat(),
         }
         existing = next((i for i in state["intents"] if i["intent_id"] == intent_id), None)
         if existing:
@@ -444,28 +459,52 @@ class PaperStore:
             finalized_at_utc,
         )
 
+    def event(self, account, kind, key):
+        event_id = digest({"account": account, "kind": kind, "key": key})
+        with self.connection() as db:
+            row = db.execute(
+                "SELECT * FROM audit_events WHERE event_id=? AND account=?", (event_id, account)
+            ).fetchone()
+        if row is None:
+            return None
+        result = dict(row)
+        result["payload"] = json.loads(result.pop("payload_json"))
+        return result
+
+    def _bar_effect(self, account, kind, run_id, price, at_utc):
+        key = stamp(at_utc).isoformat()
+        price = number(decimal(price))
+        prior = self.event(account, kind, key)
+        if prior:
+            with self.connection() as db:
+                _, old = self._run(db, prior["payload"]["run_id"])
+                owner, new = self._run(db, run_id)
+            if (
+                owner != account
+                or decimal(prior["payload"]["price"]) != decimal(price)
+                or old["contract_spec"] != new["contract_spec"]
+                or old["cost_sha256"] != new["cost_sha256"]
+            ):
+                raise ValueError("Conflicting resumed paper bar effects")
+            return prior["event_id"]
+        return self.append(account, kind, key, {"run_id": run_id, "price": price}, at_utc)
+
     def mark(self, account, run_id, price, *, at_utc):
-        return self.append(
-            account,
-            "MARK",
-            stamp(at_utc).isoformat(),
-            {"run_id": run_id, "price": number(decimal(price))},
-            at_utc,
-        )
+        return self._bar_effect(account, "MARK", run_id, price, at_utc)
 
     def funding(self, account, run_id, price, *, at_utc):
-        return self.append(
-            account,
-            "FUNDING",
-            stamp(at_utc).isoformat(),
-            {"run_id": run_id, "price": number(decimal(price))},
-            at_utc,
-        )
+        return self._bar_effect(account, "FUNDING", run_id, price, at_utc)
 
     def halt(self, account, reason, *, at_utc):
         return self.append(
             account, "HALT", [reason, stamp(at_utc).isoformat()], {"reason": reason}, at_utc
         )
+
+    def stop_pending(self, account, reason, *, at_utc):
+        for order in self.inspect(account)["orders"]:
+            if order["status"] in ("NEW", "ACCEPTED"):
+                terminal = "REJECTED" if order["status"] == "NEW" else "EXPIRED"
+                self.transition(account, order["intent_id"], terminal, at_utc=at_utc, reason=reason)
 
     def reset_halt(self, account, reason, *, at_utc, health_checked=False):
         return self.append(
@@ -508,6 +547,12 @@ class PaperStore:
                     "JOIN audit_events a USING(event_id) "
                     "WHERE c.account=? ORDER BY a.sequence",
                     (account,),
+                )
+            ]
+            result["halt_events"] = [
+                dict(r)
+                for r in db.execute(
+                    "SELECT * FROM kill_switch_events WHERE account=? ORDER BY rowid", (account,)
                 )
             ]
             result["execution"] = "PAPER_ONLY"

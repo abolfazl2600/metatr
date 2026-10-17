@@ -22,6 +22,7 @@ metatr = "metatr.cli:main"
 metatr-bridge = "metatr.bridge:main"
 metatr-futures = "metatr.futures_cli:main"
 metatr-registry = "metatr.registry_cli:main"
+metatr-paper = "metatr.paper_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

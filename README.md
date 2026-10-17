@@ -163,3 +163,9 @@ kill-switch/reset rules: [docs/PAPER_RISK.md](docs/PAPER_RISK.md).
 
 Risk-approved next-bar paper fills and conservative restart/reconciliation behavior:
 [docs/PAPER_SIMULATOR.md](docs/PAPER_SIMULATOR.md).
+
+Explicit opt-in paper runner, offline replay, health monitoring, restart recovery,
+status/audit exports and Mac operator runbook:
+[docs/PAPER_OPERATIONS.md](docs/PAPER_OPERATIONS.md). The native #20/#21 visual
+acceptance and monitored paper soak are separate pending operational sign-offs;
+unit tests do not establish them. No real execution option exists.
