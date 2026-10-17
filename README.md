@@ -160,3 +160,6 @@ is outside this subsystem.
 
 Paper risk limits, explicit hypothetical collateral assumptions and persistent
 kill-switch/reset rules: [docs/PAPER_RISK.md](docs/PAPER_RISK.md).
+
+Risk-approved next-bar paper fills and conservative restart/reconciliation behavior:
+[docs/PAPER_SIMULATOR.md](docs/PAPER_SIMULATOR.md).

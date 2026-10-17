@@ -195,7 +195,7 @@ class PaperStore:
             )
         elif kind == "FILL":
             order = db.execute(
-                """SELECT i.*,o.status FROM intents i JOIN paper_orders o
+                """SELECT i.*,o.status,o.approval_json FROM intents i JOIN paper_orders o
                 USING(intent_id) WHERE intent_id=? AND i.account=?""",
                 (p["intent_id"], account),
             ).fetchone()
@@ -213,6 +213,16 @@ class PaperStore:
                 < TIMEFRAME_SECONDS[spec.market.timeframe]
             ):
                 raise ValueError("Fill differs from approved paper intent/pins")
+            proof = p.get("risk_recheck", {})
+            approval = json.loads(order["approval_json"])
+            if (
+                proof.get("action") != "APPROVE"
+                or proof.get("ledger_sha256") != digest(json.loads(state["ledger_json"]))
+                or not approval.get("policy_sha256")
+                or proof.get("policy_sha256") != approval["policy_sha256"]
+                or stamp(proof["timestamp"]) != stamp(at)
+            ):
+                raise ValueError("Fresh policy-pinned risk recheck required at fill commit")
             old = FuturesLedger(**json.loads(state["ledger_json"]))
             ledger, trade = apply_fill(old, fill, spec)
             cls._save_ledger(db, account, ledger)
@@ -417,12 +427,20 @@ class PaperStore:
             at_utc,
         )
 
-    def fill(self, account, intent_id, fill: SimulatedFill, *, finalized_at_utc):
+    def fill(self, account, intent_id, fill: SimulatedFill, *, finalized_at_utc, risk_recheck=None):
+        with self.connection() as db:
+            existing = db.execute(
+                "SELECT * FROM paper_fills WHERE account=? AND intent_id=?", (account, intent_id)
+            ).fetchone()
+            if existing:
+                if json.loads(existing["fill_json"])["fill"] != asdict(fill):
+                    raise ValueError("Conflicting duplicate paper fill")
+                return existing["event_id"]
         return self.append(
             account,
             "FILL",
             intent_id,
-            {"intent_id": intent_id, "fill": asdict(fill)},
+            {"intent_id": intent_id, "fill": asdict(fill), "risk_recheck": risk_recheck or {}},
             finalized_at_utc,
         )
 

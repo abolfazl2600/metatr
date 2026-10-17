@@ -239,7 +239,8 @@ def evaluate(
                 signed = quantity if intent["side"] == "BUY" else -quantity
                 post = decimal(ledger.contracts) + signed
                 tick = decimal(contract_spec.tick_size)
-                worst = price * (1 + decimal(costs.spread_bps) / 20000) + tick * decimal(
+                execution_price = decimal(str(bars.iloc[-1].high)) if phase == "fill" else price
+                worst = execution_price * (1 + decimal(costs.spread_bps) / 20000) + tick * decimal(
                     costs.slippage_ticks
                 )
                 worst = (worst / tick).to_integral_value(rounding=ROUND_CEILING) * tick
