@@ -142,3 +142,6 @@ margin/funding limits: [docs/CONTRACT_ECONOMICS.md](docs/CONTRACT_ECONOMICS.md).
 
 The deterministic, next-bar hypothetical futures simulator and its accounting/event
 policies are documented in [docs/BACKTEST.md](docs/BACKTEST.md).
+
+Purged chronological train/validation/test folds and frozen candidate selection:
+[docs/VALIDATION.md](docs/VALIDATION.md).
