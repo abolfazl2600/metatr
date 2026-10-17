@@ -21,7 +21,8 @@ from metatr.dataset_quality import validate_dataset
 from metatr.exchanges.coinbase_futures import CoinbaseFuturesFeed
 from metatr.futures_store import TIMEFRAME_SECONDS, FuturesSQLiteStore
 from metatr.model_registry import StrategyRegistry
-from metatr.mt5_publisher import publish
+from metatr.paper_display import publish_paper_display
+from metatr.paper_observe import observe
 from metatr.paper.risk import PaperMarketState, PaperRiskEngine, PaperRiskPolicy
 from metatr.paper.runner import (
     PaperRunner,
@@ -140,6 +141,47 @@ def capture_public(feed, market, store, calendar, *, count=80, now=None, wait=ti
     return dataset
 
 
+def _publish_paper(args, paper, dataset, decision, spec, contract, result, now):
+    if not args.display_output_dir:
+        result["display"] = {"status": "NOT_CONFIGURED"}
+    elif result["halted"]:
+        result["display"] = {"status": "PAPER_HALTED_NO_NEW_MARKERS"}
+    elif decision is None:
+        result["display"] = {"status": "NO_NEW_COMMITTED_BAR"}
+    else:
+        result["display"] = publish_paper_display(
+            dataset, decision, spec, contract, result,
+            args.display_output_dir, now_utc=now,
+            evidence_dir=paper.path.parent / "display-evidence",
+        )
+
+
+def _verify_observation_workspace(args):
+    if args.observation_workspace is None:
+        return
+    workspace = args.observation_workspace.expanduser().resolve()
+    profile = json.loads((workspace / "setup.json").read_text())
+    if (profile.get("schema_version") != 1
+            or profile.get("label") != "PAPER_ONLY_SIMULATED"
+            or profile.get("account") != args.account
+            or profile.get("market") != args.market
+            or (workspace / "paper.sqlite").resolve() != args.paper_db.resolve()):
+        raise ValueError("Observation profile/account/paper DB mismatch")
+
+
+def _record_observation(args, result, *, first=False):
+    if args.observation_workspace is None:
+        return
+    if first or result["processed_bars"] or result["halted"]:
+        path, record = observe(args.observation_workspace)
+        result["observation"] = {
+            "path": str(path), "health": record["health"],
+            "alerts": record["alerts"], "reconciled": record["reconciled"],
+        }
+        if not record["reconciled"]:
+            raise ValueError("PAPER_OBSERVATION_RECONCILIATION_FAILED")
+
+
 def _data_arguments(parser):
     for name in (
         "store",
@@ -183,6 +225,8 @@ def main(argv=None):
     commands["run"].add_argument("--poll-seconds", type=int, default=30)
     commands["run"].add_argument("--count", type=int, default=80)
     commands["run"].add_argument("--max-cycles", type=int)
+    commands["run"].add_argument("--observation-workspace", type=Path,
+                                 help="Exact paper_setup workspace for automatic evidence")
     commands["reset-halt"].add_argument("--clock-mode", choices=("REPLAY", "PUBLIC"), required=True)
     commands["report"].add_argument("--output", type=Path)
     args = parser.parse_args(argv)
@@ -243,6 +287,8 @@ def main(argv=None):
                 )
             print("PAPER ONLY halt reset after fresh health checks")
             return 0
+        if args.command == "run":
+            _verify_observation_workspace(args)
         runner = PaperRunner(
             paper,
             args.account,
@@ -260,15 +306,8 @@ def main(argv=None):
                 max_catch_up_bars=args.max_catch_up_bars,
             )
             decision = result.pop("last_decision", None)
-            if args.display_output_dir and decision and not result["halted"]:
-                publish(
-                    dataset,
-                    [decision],
-                    spec,
-                    contract,
-                    args.display_output_dir,
-                    now_utc=dataset.asof_utc,
-                )
+            _publish_paper(args, paper, dataset, decision, spec, contract, result,
+                           dataset.asof_utc)
             print(canonical(result))
             return 1 if result["halted"] else 0
         if (
@@ -310,15 +349,9 @@ def main(argv=None):
                         max_catch_up_bars=args.max_catch_up_bars,
                     )
                     decision = result.pop("last_decision", None)
-                    if args.display_output_dir and decision and not result["halted"]:
-                        publish(
-                            dataset,
-                            [decision],
-                            spec_now,
-                            contract,
-                            args.display_output_dir,
-                            now_utc=now_utc(),
-                        )
+                    _publish_paper(args, paper, dataset, decision, spec_now, contract, result,
+                                   now_utc())
+                    _record_observation(args, result, first=cycles == 0)
                     print(canonical(result), flush=True)
                     if result["halted"]:
                         return 1
@@ -355,6 +388,11 @@ def main(argv=None):
                     args.account, "OPERATIONAL_FAILURE", at_utc=args.now_utc or now_utc()
                 )
             except Exception:
+                pass
+        if runner is not None and getattr(args, "observation_workspace", None):
+            try:
+                observe(args.observation_workspace)
+            except (ValueError, TypeError, KeyError, OSError, sqlite3.Error):
                 pass
         if runner is not None:
             try:
