@@ -1,17 +1,20 @@
 """Stage-2 integration regressions; strictly synthetic, with no network or MT5 terminal."""
 
+import json
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from test_paper_runner import inputs
 from test_paper_setup import capture
 
-from metatr.mt5_publisher import read_publication
+from metatr.mt5_publisher import market_directory, read_publication
 from metatr.paper.runner import PaperRunner
 from metatr.paper_display import publish_paper_display
 from metatr.paper_observe import observe
 from metatr.paper_setup import prepare, runner_args
+from metatr.research import digest
 from metatr.strategies import StrategyDecision
 
 
@@ -33,19 +36,16 @@ def test_verified_paper_signal_publishes_one_nonexecuting_marker_and_evidence(tm
         now_utc=data.asof_utc, evidence_dir=tmp_path / "evidence",
     )
     assert handoff["status"] == "PUBLISHED_RESEARCH_SIGNAL_NOT_ORDER"
-    payload = read_publication(tmp_path / "common" / "metatr" /
-                               __import__("metatr.research", fromlist=["digest"]).digest(
-                                   data.market.key)[:16], data.market,
-                               now_utc=data.asof_utc)
+    payload = read_publication(market_directory(tmp_path / "common", data.market),
+                               data.market, now_utc=data.asof_utc)
     assert payload["manifest"]["execution"] == "DISABLED"
     assert payload["manifest"]["label"] == "EXTERNAL_SIMULATED_DATA"
     assert payload["manifest"]["signal_count"] == "1"
     assert "PAPER_SIMULATED_" in payload["signals"][0]["reason"]
     assert payload["signals"][0]["action"] == decision.action
-    import json
-    evidence = json.loads((tmp_path / "evidence" /
-                           ( __import__("pathlib").Path(handoff["evidence"]).stem + ".json")
-                           ).read_text())
+    evidence = json.loads(Path(handoff["evidence"]).read_text())
+    assert evidence["run_id"] == digest({k: v for k, v in evidence.items()
+                                         if k != "run_id"})
     assert evidence["original_prefix_sha256"] == decision.data_sha256
     assert evidence["display_dataset_sha256"] == data.data_sha256
     before = paper.inspect("test")
@@ -70,8 +70,7 @@ def test_wrong_provenance_model_checkpoint_risk_or_halt_cannot_publish(tmp_path,
     with pytest.raises(ValueError):
         publish_paper_display(data, decision, spec, contract, result, tmp_path / "common",
                               now_utc=data.asof_utc, evidence_dir=tmp_path / "evidence")
-    assert not list((tmp_path / "common").rglob("manifest.csv")) if (
-        tmp_path / "common").exists() else True
+    assert not list((tmp_path / "common").rglob("manifest.csv"))
 
 
 def test_public_setup_enables_automatic_observation_with_no_halt_reset(tmp_path):
