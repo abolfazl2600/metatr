@@ -145,3 +145,7 @@ policies are documented in [docs/BACKTEST.md](docs/BACKTEST.md).
 
 Purged chronological train/validation/test folds and frozen candidate selection:
 [docs/VALIDATION.md](docs/VALIDATION.md).
+
+Auditable offline reports, net-equity metrics, OOS cost stress and immutable JSON/CSV
+exports: [docs/BACKTEST_REPORTS.md](docs/BACKTEST_REPORTS.md). Positive backtest
+results cannot guarantee live profitability.
