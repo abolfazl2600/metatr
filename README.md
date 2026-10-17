@@ -157,3 +157,6 @@ separate native viewer compilation and manual acceptance.
 Isolated simulated accounts and append-only paper ledger foundations:
 [docs/PAPER_LEDGER.md](docs/PAPER_LEDGER.md). Nothing starts on import; real trading
 is outside this subsystem.
+
+Paper risk limits, explicit hypothetical collateral assumptions and persistent
+kill-switch/reset rules: [docs/PAPER_RISK.md](docs/PAPER_RISK.md).
