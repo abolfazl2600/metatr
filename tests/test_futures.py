@@ -184,3 +184,19 @@ def test_out_of_order_candles_sorted_but_still_valid():
     bars = CoinbaseFuturesFeed(reverse).closed_candles(FUTURE["product_id"], now=NOW)
     assert len(bars) == 300
     assert bars.index.is_monotonic_increasing
+
+
+def test_cli_live_probe_contract_offline(monkeypatch, capsys):
+    from metatr import futures_cli
+
+    monkeypatch.setattr(futures_cli, "CoinbaseFuturesFeed",
+                        lambda: CoinbaseFuturesFeed(fake_get))
+    assert futures_cli.main(["--product-id", FUTURE["product_id"],
+                             "--probe-candles", "--count", "64"]) == 0
+    probe = json.loads(capsys.readouterr().out)
+    assert probe["mode"] == "PUBLIC_DATA_PROBE"
+    assert probe["contract_kind"] == "DATED"
+    assert probe["count"] == 64
+    assert probe["validated_contiguous"] is True
+    assert probe["execution"] == "DISABLED"
+    assert probe["spot_substitution"] is False
