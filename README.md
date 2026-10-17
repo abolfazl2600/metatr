@@ -113,20 +113,20 @@ Usage, a precise data contract and migration limitations:
 
 ## Immutable research Strategy & Model Registry (Stage 1/4)
 
-\`metatr.model_registry.StrategyRegistry\` stores pinned, immutable versions of
-allowlisted strategies by exact \`(exchange, asset, instrument, product_id, timeframe)\`
-in **separate** \`data/research/registry.sqlite\` (schema v1). It never modifies the
-existing futures data DB, allows order submission or changes the legacy futures CLI.
+`metatr.model_registry.StrategyRegistry` stores pinned, immutable versions of
+allowlisted strategies by exact `(exchange, asset, instrument, product_id, timeframe)`
+in **separate** `data/research/registry.sqlite` (schema v1). It never modifies the
+existing futures data DB, enables order submission, or changes the legacy futures CLI.
 
-\`\`\`bash
+```bash
 python -m pip install -e ".[dev]"
 python -m metatr.futures_cli --list  # verify an actual native futures product first
 metatr-registry import-legacy --exchange coinbase --asset BTC --instrument FUTURE \
   --product-id BIP-20DEC30-CDE --timeframe M15 --allow-wildcard
 metatr-registry list
-\`\`\`
+```
 
-Legacy wildcard profiles require explicit \`--allow-wildcard\` and materialize a
-**real exact market**, never \`*\`. All returned specs state \`execution=DISABLED\`;
-\`draft\` / \`research\` / \`retired\` statuses do not authorize trading. See
+Legacy wildcard profiles require explicit `--allow-wildcard` and materialize a
+**real exact market**, never `*`. All returned specs state `execution=DISABLED`;
+`draft` / `research` / `retired` statuses do not authorize trading. See
 [docs/MODEL_REGISTRY.md](docs/MODEL_REGISTRY.md) for SQL, lifecycle, API and CLI.
