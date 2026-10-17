@@ -1,6 +1,6 @@
 // One-way external-data viewer. Native compile/Wine acceptance is REQUIRED.
 #property strict
-#property version "1.00"
+#property version "1.01"
 #property description "EXTERNAL / SIMULATED DATA viewer; execution DISABLED"
 
 input string CommonSubfolder="metatr\\REPLACE_WITH_PRINTED_MARKET_HASH";
@@ -19,6 +19,15 @@ const string BARS_HEADER="timestamp,open,high,low,close,volume,product_id,timefr
 const string SIGNALS_HEADER="bar_open_utc,decision_utc,action,strategy_id,strategy_version,config_sha256,reason,data_sha256";
 
 bool Fail(const string reason) { error_reason=reason; return false; }
+
+long FindDisplayChart()
+{
+   // Chart IDs are process-local: rediscover a retained chart after EA/terminal restart.
+   for(long chart=ChartFirst();chart>=0;chart=ChartNext(chart))
+      if(ChartSymbol(chart)==custom_symbol && ChartPeriod(chart)==PERIOD_M15)
+         return chart;
+   return 0;
+}
 
 bool DigitsOnly(const string s)
 {
@@ -168,7 +177,8 @@ bool Refresh()
       signal_times[i]=opened; actions[i]=f[2]; bar_positions[i]=position; previous=opened;
    }
    if(previous!=latest) return Fail("missing latest signal");
-   if(m[13]==last_run)
+   if(m[13]==last_run && display_chart>0 && ChartSymbol(display_chart)==custom_symbol &&
+      ChartPeriod(display_chart)==PERIOD_M15)
    { Banner("VALID "+m[16]+"@"+m[17]+" last UTC "+TimeToString((datetime)latest),clrSilver); return true; }
    // Only after complete validation may the custom history/chart be touched.
    custom_symbol="EXT_"+StringSubstr(ExpectedProduct,0,3)+"_"+StringSubstr(CommonSubfolder,StringLen(CommonSubfolder)-16,8);
@@ -185,7 +195,10 @@ bool Refresh()
    if(CustomRatesReplace(custom_symbol,rates[0].time,rates[count-1].time,rates,count)!=count)
       return Fail("custom rates update failed");
    if(display_chart<=0 || ChartSymbol(display_chart)!=custom_symbol)
-      display_chart=ChartOpen(custom_symbol,PERIOD_M15);
+   {
+      display_chart=FindDisplayChart();
+      if(display_chart<=0) display_chart=ChartOpen(custom_symbol,PERIOD_M15);
+   }
    if(display_chart<=0) return Fail("open M15 external chart manually and retry");
    ChartSetSymbolPeriod(display_chart,custom_symbol,PERIOD_M15);
    int first=(int)MathMax(0,signals-500);
@@ -231,6 +244,8 @@ int OnInit()
    string suffix=StringSubstr(CommonSubfolder,7);
    for(int i=0;i<16;i++)
    { ushort c=StringGetCharacter(suffix,i); if(!((c>='0' && c<='9') || (c>='a' && c<='f'))) return INIT_PARAMETERS_INCORRECT; }
+   custom_symbol="EXT_"+StringSubstr(ExpectedProduct,0,3)+"_"+StringSubstr(CommonSubfolder,StringLen(CommonSubfolder)-16,8);
+   display_chart=FindDisplayChart();
    if(!EventSetTimer(PollSeconds)) return INIT_FAILED;
    Banner("STALE awaiting verified snapshot",clrOrange);
    return INIT_SUCCEEDED;

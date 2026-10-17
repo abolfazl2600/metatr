@@ -1,10 +1,27 @@
 # Native MT5 external futures viewer — pending native acceptance
 
 `mql5/Experts/MetatrFuturesViewer.mq5` is a separate timer-driven viewer of the
-v1 outbound protocol. **It has not been compiled in MetaEditor or observed in
-MT5/Wine in this development environment. Do not mark #20 complete or merge its
-PR until the native build and manual checklist below are recorded.** Python
-source/fixture checks are not native compilation or visual integration proof.
+v1 outbound protocol. Native acceptance is in progress on the user's Mac/Wine
+installation. **Do not mark #20 complete or merge its PR until the native build
+and manual checklist below are recorded.** Python source/fixture checks are not
+native compilation or visual integration proof.
+
+Observed on 2026-10-17 for PR #35's original head `49abad7`:
+- MetaEditor screenshot: 0 errors, 0 warnings, 2076 ms, X64 Regular.
+- MT5 screenshot/log: `EXT_BIP_28c5db08,M15`, 80 bars and 80 signals,
+  `EXTERNAL_VALID`, `execution=DISABLED`, synthetic fixture; visible arrows and NO_TRADE.
+- Repeated same-generation publication preserved one tab before restart.
+- User reports successful terminal restart. Subsequent screenshot revealed a second
+  custom-symbol chart: the original version did not rediscover retained chart IDs.
+- Missing manifest drill: screenshot shows prior candles retained and visible
+  `STALE/INVALID`; user reports restoration returned to VALID.
+
+Version 1.01 reuses an existing matching M15 chart on initialization and before
+opening a chart, and recreates a manually closed display on the next verified poll.
+It leaves any pre-existing duplicate tabs for the user to close. This revision
+still needs native recompilation and restart/closed-chart acceptance. Changed-generation
+updates, exact CSV/candle comparisons, remaining failure drills and build details
+also remain pending; no complete native sign-off is claimed.
 
 1. Install the EA in the terminal's `MQL5/Experts`, open it in MetaEditor, compile,
    and save the exact build log (errors/warnings, terminal build, timestamp).
