@@ -221,3 +221,18 @@ def test_live_coinbase_perpetual_empty_optional_base_currency_fields():
     not_bitcoin = {**actual_metadata, "future_product_details": {
         **actual_metadata["future_product_details"], "contract_root_unit": "BCH"}}
     assert bitcoin_future_kind(not_bitcoin) is None
+
+
+
+def test_candle_request_excludes_open_boundary_from_coinbase_query():
+    seen = []
+
+    def capture_get(path, params):
+        if path.endswith("/candles"):
+            seen.append(params.copy())
+        return fake_get(path, params)
+
+    bars = CoinbaseFuturesFeed(capture_get).closed_candles(FUTURE["product_id"], now=NOW)
+    assert len(bars) == 300
+    assert seen[0]["end"] == str(int(NOW.timestamp()) - 1)
+    assert seen[0]["limit"] == 300
