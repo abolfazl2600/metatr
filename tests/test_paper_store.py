@@ -8,6 +8,7 @@ from test_backtest import fixture
 
 from metatr.contract_economics import SimulatedFill
 from metatr.paper.store import PaperStore
+from metatr.research import digest
 
 
 def setup(tmp_path, account="test"):
@@ -55,21 +56,37 @@ def intent(store, run, data, side="BUY", quantity="2", at="2020-01-01T00:15:00Z"
         "ACCEPTED",
         at_utc=at,
         reason="fixture approval",
-        approval={"action": "APPROVE"},
+        approval={"action": "APPROVE", "policy_sha256": "a" * 64},
     )
     return key
+
+
+def commit_fill(store, account, intent_id, fill, *, finalized_at_utc):
+    return store.fill(
+        account,
+        intent_id,
+        fill,
+        finalized_at_utc=finalized_at_utc,
+        risk_recheck={
+            "action": "APPROVE",
+            "policy_sha256": "a" * 64,
+            "ledger_sha256": digest(store.inspect(account)["ledger"]),
+            "timestamp": finalized_at_utc,
+        },
+    )
 
 
 def test_exact_ledger_duplicate_restart_and_reversal(tmp_path):
     store, run, _, data, spec, costs = setup(tmp_path)
     key = intent(store, run, data)
     first = fill(spec, costs)
-    store.fill("test", key, first, finalized_at_utc="2020-01-01T00:30:00Z")
-    store.fill("test", key, first, finalized_at_utc="2020-01-01T00:30:00Z")
+    commit_fill(store, "test", key, first, finalized_at_utc="2020-01-01T00:30:00Z")
+    commit_fill(store, "test", key, first, finalized_at_utc="2020-01-01T00:30:00Z")
     assert len(store.inspect("test")["fills"]) == 1
     assert Decimal(store.inspect("test")["ledger"]["cash"]) == 999
     second = intent(store, run, data, "SELL", "4", "2020-01-01T00:30:00Z")
-    store.fill(
+    commit_fill(
+        store,
         "test",
         second,
         fill(spec, costs, "SELL", "4", "10100", "2", "2020-01-01T00:30:00Z"),
@@ -100,7 +117,7 @@ def test_transaction_crash_rolls_back_every_effect(tmp_path, monkeypatch):
 
     monkeypatch.setattr(store, "_reduce", crash)
     with pytest.raises(OSError):
-        store.fill("test", key, fill(spec, costs), finalized_at_utc="2020-01-01T00:30:00Z")
+        commit_fill(store, "test", key, fill(spec, costs), finalized_at_utc="2020-01-01T00:30:00Z")
     assert store.inspect("test")["orders"][0]["status"] == "ACCEPTED"
     assert not store.inspect("test")["fills"]
     assert store.inspect("test")["ledger"]["cash"] == "1000"
@@ -123,7 +140,7 @@ def test_halt_isolation_tamper_and_schema(tmp_path):
             "ACCEPTED",
             at_utc="2020-01-01T00:15:00Z",
             reason="blocked",
-            approval={"action": "APPROVE"},
+            approval={"action": "APPROVE", "policy_sha256": "a" * 64},
         )
     with pytest.raises(ValueError):
         store.reset_halt("test", "reason", at_utc=data.end_utc)
