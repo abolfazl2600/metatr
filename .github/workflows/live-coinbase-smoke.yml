@@ -21,6 +21,22 @@ jobs:
           cache: pip
       - name: Install package
         run: python -m pip install -e .
+      - name: Inspect public contract identity fields
+        run: |
+          python - <<'PY'
+          import json
+          from metatr.exchanges.coinbase_futures import _public_get
+          p = _public_get("/products/BIP-20DEC30-CDE", {})
+          p = p.get("product", p)
+          d = p.get("future_product_details") or {}
+          fields = ("product_id", "product_type", "display_name", "base_currency_id",
+                    "base_display_symbol", "quote_currency_id", "quote_display_symbol")
+          attrs = {field: p.get(field) for field in fields}
+          for field in ("contract_code", "contract_expiry", "contract_expiry_type",
+                        "contract_root_unit", "contract_size", "venue"):
+              attrs[field] = d.get(field)
+          print(json.dumps(attrs, indent=2, sort_keys=True))
+          PY
       - name: Check real Coinbase BIP M15 candles (no orders)
         run: |
           python -m metatr.futures_cli \
