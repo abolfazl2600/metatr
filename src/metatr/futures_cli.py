@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from metatr.exchanges.coinbase_futures import CoinbaseFuturesFeed, GRANULARITIES
+from metatr.exchanges.coinbase_futures import GRANULARITIES, CoinbaseFuturesFeed
 from metatr.futures_core import Market, load_configuration, select_model
 
 
