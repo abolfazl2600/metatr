@@ -136,3 +136,6 @@ Pure pinned research adapters and the developer extension contract are documente
 
 Historical readiness, as-of reads, sourced session calendars and offline backfill
 planning are documented in [docs/DATASET_QUALITY.md](docs/DATASET_QUALITY.md).
+
+Exact-decimal futures simulation specifications, assumed costs and unsupported
+margin/funding limits: [docs/CONTRACT_ECONOMICS.md](docs/CONTRACT_ECONOMICS.md).
