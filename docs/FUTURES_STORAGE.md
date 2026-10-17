@@ -47,11 +47,21 @@ restored = store.read_bars(market, limit=300)
 source_record = store.read_snapshot(snapshot_id)
 ```
 
-The above is a **composition example**, not an executable script until the
-capture variables are supplied. The current Coinbase CLI does **not** write to
-SQLite automatically. A follow-up change will pass an atomic/raw capture
-through the feed and let the CLI ingest it with provenance. Do not fabricate
-raw payloads to satisfy storage APIs.
+The example above demonstrates the storage API directly. The Coinbase futures
+CLI now captures the public product metadata and raw public candle JSON along
+with validated bars in one read-only request workflow, then persists them
+atomically when `--store` is passed:
+
+```bash
+python -m metatr.futures_cli --product-id BIP-20DEC30-CDE \
+  --timeframe M15 --count 64 --probe-candles \
+  --store data/raw/futures.sqlite
+```
+
+The CLI JSON output includes `storage.snapshot_id` and `storage.market`.
+Without `--store`, no SQLite writes occur. The command neither sends orders
+nor automatically substitutes spot candles. Re-running a compatible capture
+is idempotent; contradictory historical OHLCV values fail closed.
 
 ## Data protection and operational notes
 
