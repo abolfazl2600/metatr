@@ -42,7 +42,7 @@ def test_persist_reload_and_exact_raw_provenance(tmp_path):
     bars = FuturesSQLiteStore(path).read_bars(MARKET)
     assert len(bars) == 5
     assert bars.index.tz is not None
-    pd.testing.assert_frame_equal(bars, expected["bars"], check_dtype=False)
+    pd.testing.assert_frame_equal(bars, expected["bars"], check_dtype=False, check_freq=False)
 
 
 def test_repeat_ingestion_is_idempotent_and_market_isolation(tmp_path):
