@@ -67,3 +67,17 @@ Official API references used for implementation:
 - https://www.mql5.com/en/docs/files/filereadarray
 - https://www.mql5.com/en/docs/customsymbols/customratesreplace
 - https://www.metatrader5.com/en/terminal/help/trading_advanced/custom_instruments
+
+## v1.02 simulated Paper tooltip and banner labeling (native check pending)
+
+A Python-published Paper marker now carries an explicit
+`PAPER_SIMULATED_SIGNAL_NOT_ORDER` or `PAPER_SIMULATED_RISK_VETO_NO_ORDER`
+reason. Viewer v1.02 displays `PAPER SIMULATED SIGNAL / NOT ORDER` in its
+status banner and marks the signal tooltip as **simulated research, NOT an order**.
+A risk-vetoed decision appears as `PAPER NO_TRADE`. The same manifest strict
+hash checks, custom symbol's trade-mode DISABLED and the no-trade API boundary
+remain unchanged. This is distinct from ordinary research signals.
+
+The v1.02 MQL5 modification has **not** been compiled in the operator's native
+MetaEditor/Wine installation. Python static and protocol tests cannot claim that
+native compilation or visualization acceptance has passed (#20/#21).
