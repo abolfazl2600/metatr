@@ -184,7 +184,9 @@ class FuturesSQLiteStore:
         if not rows:
             raise ValueError("No stored candles for this market")
         frame = pd.DataFrame(rows, columns=("timestamp", *OHLCV))
-        frame.index = pd.to_datetime(frame.pop("timestamp"), utc=True)
+        frame.index = pd.DatetimeIndex(
+            pd.to_datetime(frame.pop("timestamp"), utc=True), name=None
+        )
         return validate_bars(frame)
 
     def read_snapshot(self, snapshot_id: str) -> dict:
