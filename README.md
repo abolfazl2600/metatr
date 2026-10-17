@@ -73,4 +73,22 @@ python -m metatr.cli --source mt5 --symbol EURUSD --timeframe M15 --count 300
 python -m metatr.bridge --file "/absolute/path/to/metatr_EURUSD_M15.csv" --symbol EURUSD --timeframe M15 --watch
 ```
 
-کامپایل/اجرای EA روی Wine مک هنوز نیازمند تأیید در ترمینال واقعی است. این مسیر از **پکیج رسمی MetaTrader5 Python** استفاده نمی‌کند؛ محدودیت ویندوزِ آن پکیج همچنان برقرار است.
+کامپایل و اجرای EA روی Wine مک و خواندن CSV در Python روی دستگاه کاربر تأیید شده است. این مسیر از **پکیج رسمی MetaTrader5 Python** استفاده نمی‌کند؛ محدودیت ویندوزِ آن پکیج همچنان برقرار است.
+
+
+## Futures multi-market research foundation — Coinbase BTC Futures
+
+New read-only modules: `metatr.exchanges.coinbase_futures`, `metatr.futures_core`, and `metatr.futures_cli`.
+They discover **actual Bitcoin FUTURE** products (no silent BTC-USD spot fallback), validate completed candles, and select between independent research baseline strategies using the market-specific profiles in `config/markets.json`. Every exchange, contract and timeframe may have its **own** profile and candidate models.
+
+```bash
+git pull origin main
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+python -m pytest -q
+python -m metatr.futures_cli --list
+# Pick an actual returned BTC futures product_id; this placeholder is NOT a symbol:
+python -m metatr.futures_cli --product-id ACTUAL_FUTURES_PRODUCT_ID --timeframe M15 --count 300
+```
+
+Read [docs/FUTURES_ARCHITECTURE.md](docs/FUTURES_ARCHITECTURE.md) before using this module. **No real orders, account authentication, streaming service, MT5 futures importer or trained AI model exists yet**; output only provides research signals as JSON. Real Coinbase accessibility from your region still needs to be verified.
