@@ -170,17 +170,37 @@ class FuturesSQLiteStore:
                 )
         return snapshot_id
 
-    def read_bars(self, market: Market, *, limit: int = 350) -> pd.DataFrame:
-        """Read last N locally stored candles; no network access."""
-        if not 1 <= limit <= 100_000:
+    def read_bars(self, market: Market, *, limit: int = 350, start_utc=None,
+                  end_utc=None, asof_utc=None) -> pd.DataFrame:
+        """Read last N bars, or all bars in explicit [start,end) with as-of visibility.
+
+        Bounded mode does not silently truncate. Completeness/calendar/provenance
+        checks are provided separately by dataset_quality.validate_dataset.
+        """
+        if type(limit) is not int or not 1 <= limit <= 100_000:
             raise ValueError("Invalid query limit")
+        bounded = start_utc is not None or end_utc is not None or asof_utc is not None
+        if bounded:
+            from metatr.calendars import stamp
+            if start_utc is None or end_utc is None or asof_utc is None:
+                raise ValueError("Bounded reads require start, end and asof UTC")
+            start, end, asof = map(stamp, (start_utc, end_utc, asof_utc))
+            seconds = TIMEFRAME_SECONDS[market.timeframe]
+            if (start >= end or end > asof
+                    or any(t.value % (seconds * 10**9) for t in (start, end))
+                    or (end - start).total_seconds() / seconds > 100_000):
+                raise ValueError("Invalid, open or oversized bounded candle range")
+            query = """SELECT b.candle_open_utc,b.open,b.high,b.low,b.close,b.volume
+                FROM verified_bars b JOIN raw_snapshots s ON s.snapshot_id=b.first_snapshot_id
+                WHERE b.market_key=? AND b.candle_open_utc>=? AND b.candle_open_utc<?
+                AND s.received_at_utc<=? ORDER BY b.candle_open_utc"""
+            params = (market.key, start.isoformat(), end.isoformat(), asof.isoformat())
+        else:
+            query = """SELECT candle_open_utc,open,high,low,close,volume
+                FROM verified_bars WHERE market_key=? ORDER BY candle_open_utc DESC LIMIT ?"""
+            params = (market.key, limit)
         with self._connection() as db:
-            rows = db.execute(
-                """SELECT candle_open_utc, open, high, low, close, volume
-                   FROM verified_bars WHERE market_key = ?
-                   ORDER BY candle_open_utc DESC LIMIT ?""",
-                (market.key, limit),
-            ).fetchall()
+            rows = db.execute(query, params).fetchall()
         if not rows:
             raise ValueError("No stored candles for this market")
         frame = pd.DataFrame(rows, columns=("timestamp", *OHLCV))
