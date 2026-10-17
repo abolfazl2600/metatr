@@ -6,8 +6,10 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 from dataclasses import asdict
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 
 import pandas as pd
 
@@ -33,12 +35,37 @@ def _body(value):
     return body
 
 
+def _capture_with_retry(feed, *, wait=time.sleep):
+    """Retry transient public reads before creating any persistent Paper state.
+
+    Deliberately do not retry 403/404/429: they require operator review and
+    must never be interpreted as permission to fall back to another market.
+    No private/authenticated endpoints are used.
+    """
+    for attempt in range(3):
+        try:
+            return feed.capture_candles(MARKET.product_id, "M15", 80)
+        except HTTPError as exc:
+            if exc.code not in (500, 502, 503, 504) or attempt == 2:
+                raise ValueError(
+                    f"PUBLIC_HTTP_{exc.code}: Coinbase product/candles unavailable"
+                ) from None
+        except (URLError, TimeoutError, ConnectionError):
+            if attempt == 2:
+                raise ValueError(
+                    "PUBLIC_SOURCE_CONNECTION_FAILED: three public Coinbase requests failed; "
+                    "check Mac network/VPN/proxy and test the exact product URL with curl"
+                ) from None
+        wait(2**attempt)
+    raise AssertionError("Unreachable bounded retry state")
+
+
 def prepare(workspace, *, feed=None):
     """Publish a complete new profile atomically. Never edit an existing account."""
     workspace = Path(workspace).expanduser().resolve()
     if workspace.exists():
         raise ValueError("Workspace already exists; resume it with --start, do not overwrite")
-    capture = (feed or CoinbaseFuturesFeed()).capture_candles(MARKET.product_id, "M15", 80)
+    capture = _capture_with_retry(feed or CoinbaseFuturesFeed())
     now = stamp(capture.captured_at)
     end = capture.bars.index[-1] + pd.Timedelta(minutes=15)
     if not end <= now < end + pd.Timedelta(minutes=30):
