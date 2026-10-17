@@ -1,0 +1,28 @@
+name: Live Coinbase Futures Data Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/coinbase-btc-contract-validation
+
+permissions:
+  contents: read
+
+jobs:
+  public-futures-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install package
+        run: python -m pip install -e .
+      - name: Check real Coinbase BIP M15 candles (no orders)
+        run: |
+          python -m metatr.futures_cli \
+            --product-id BIP-20DEC30-CDE \
+            --timeframe M15 --count 64 --probe-candles
