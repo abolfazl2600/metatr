@@ -2,8 +2,9 @@
 
 `mql5/Experts/MetatrFuturesViewer.mq5` is a separate timer-driven viewer of the
 v1 outbound protocol. Native acceptance is in progress on the user's Mac/Wine
-installation. **Do not mark #20 complete or merge its PR until the native build
-and manual checklist below are recorded.** Python source/fixture checks are not
+installation. **Native acceptance remains incomplete.** PR #35 was merged on 2026-10-17
+after the operator explicitly deferred remaining manual checks. See
+[PIPELINE_HANDOFF.md](PIPELINE_HANDOFF.md) for the continuation and evidence status. Python source/fixture checks are not
 native compilation or visual integration proof.
 
 Observed on 2026-10-17 for PR #35's original head `49abad7`:
@@ -19,7 +20,7 @@ Observed on 2026-10-17 for PR #35's original head `49abad7`:
 Version 1.01 reuses an existing matching M15 chart on initialization and before
 opening a chart, and recreates a manually closed display on the next verified poll.
 It leaves any pre-existing duplicate tabs for the user to close. This revision
-still needs native recompilation and restart/closed-chart acceptance. Changed-generation
+was reported to compile without errors; restart/closed-chart acceptance remains deferred. Changed-generation
 updates, exact CSV/candle comparisons, remaining failure drills and build details
 also remain pending; no complete native sign-off is claimed.
 

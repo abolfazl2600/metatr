@@ -170,3 +170,9 @@ status/audit exports and Mac operator runbook:
 [docs/PAPER_OPERATIONS.md](docs/PAPER_OPERATIONS.md). The native #20/#21 visual
 acceptance and monitored paper soak are separate pending operational sign-offs;
 unit tests do not establish them. No real execution option exists.
+
+## Integrated external display handoff
+
+[SQLite → research → MT5 operator command and evidence](docs/PIPELINE_HANDOFF.md)
+provides an offline fixture harness and a separate opt-in public Coinbase capture.
+Native visual acceptance remains pending; execution is disabled.
