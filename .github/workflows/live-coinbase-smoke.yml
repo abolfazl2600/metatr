@@ -37,6 +37,32 @@ jobs:
               attrs[field] = d.get(field)
           print(json.dumps(attrs, indent=2, sort_keys=True))
           PY
+      - name: Inspect public M15 response timeline (no prices)
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from metatr.exchanges.coinbase_futures import _public_get
+          seconds, count = 900, 64
+          end = int(datetime.now(timezone.utc).timestamp()) // seconds * seconds
+          start = end - count * seconds
+          response = _public_get("/products/BIP-20DEC30-CDE/candles", {
+              "start": str(start), "end": str(end),
+              "granularity": "FIFTEEN_MINUTE", "limit": count + 1,
+          })
+          rows = response.get("candles", [])
+          stamps = sorted(int(row["start"]) for row in rows)
+          closed = [t for t in stamps if start <= t < end]
+          missing = [start + n * seconds for n in range(count)
+                     if start + n * seconds not in set(closed)]
+          print(json.dumps({
+              "received": len(rows), "closed_in_window": len(closed),
+              "expected": count, "earliest": stamps[0] if stamps else None,
+              "latest": stamps[-1] if stamps else None, "end": end,
+              "missing_count": len(missing), "first_missing": missing[:5],
+              "aligned": all(t % seconds == 0 for t in closed),
+          }, indent=2))
+          PY
       - name: Check real Coinbase BIP M15 candles (no orders)
         run: |
           python -m metatr.futures_cli \
