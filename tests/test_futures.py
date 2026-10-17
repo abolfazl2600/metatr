@@ -236,3 +236,46 @@ def test_candle_request_excludes_open_boundary_from_coinbase_query():
     assert len(bars) == 300
     assert seen[0]["end"] == str(int(NOW.timestamp()) - 1)
     assert seen[0]["limit"] == 300
+
+
+def test_capture_preserves_raw_candles_and_verified_metadata():
+    capture = CoinbaseFuturesFeed(fake_get).capture_candles(FUTURE["product_id"], now=NOW,
+                                                           count=64)
+    assert capture.product == FUTURE
+    assert capture.raw_payload["candles"][0]["start"]
+    assert len(capture.bars) == 64
+    assert capture.captured_at == NOW
+
+
+def test_cli_atomic_ingest_and_recovery(monkeypatch, capsys, tmp_path):
+    from metatr import futures_cli
+    from metatr.futures_core import Market
+    from metatr.futures_store import FuturesSQLiteStore
+
+    monkeypatch.setattr(futures_cli, "CoinbaseFuturesFeed",
+                        lambda: CoinbaseFuturesFeed(fake_get))
+    database = tmp_path / "futures.db"
+    args = ["--product-id", FUTURE["product_id"], "--probe-candles",
+            "--count", "64", "--store", str(database)]
+    assert futures_cli.main(args) == 0
+    response = json.loads(capsys.readouterr().out)
+    assert response["execution"] == "DISABLED"
+    snapshot = response["storage"]["snapshot_id"]
+    store = FuturesSQLiteStore(database)
+    recovered = store.read_snapshot(snapshot)
+    assert recovered["contract_metadata"]["product_id"] == FUTURE["product_id"]
+    assert "candles" in recovered["raw_payload"]
+    market = Market("coinbase", "BTC", "FUTURE", FUTURE["product_id"], "M15")
+    assert len(store.read_bars(market)) == 64
+
+
+def test_cli_rejects_spot_and_does_not_create_store(monkeypatch, tmp_path):
+    from metatr import futures_cli
+
+    monkeypatch.setattr(futures_cli, "CoinbaseFuturesFeed",
+                        lambda: CoinbaseFuturesFeed(fake_get))
+    database = tmp_path / "should_not_exist.db"
+    args = ["--product-id", SPOT["product_id"], "--probe-candles",
+            "--count", "64", "--store", str(database)]
+    assert futures_cli.main(args) == 1
+    assert not database.exists()
