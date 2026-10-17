@@ -1,13 +1,14 @@
 import copy
 from dataclasses import replace
 from types import SimpleNamespace
+from urllib.error import HTTPError, URLError
 
 import pandas as pd
 import pytest
 
 from metatr.contract_economics import native_contract_fingerprint
 from metatr.display_fixture import fixture_dataset
-from metatr.paper_setup import MARKET, main, prepare, runner_args
+from metatr.paper_setup import MARKET, _capture_with_retry, main, prepare, runner_args
 
 
 def capture(tmp_path):
@@ -85,3 +86,65 @@ def test_public_poll_rechecks_current_metadata_before_keeping_old_candles(tmp_pa
     cap.product["fcm_trading_session_details"]["is_session_open"] = False
     with pytest.raises(ValueError, match="PUBLIC_SESSION_CLOSED"):
         capture_public(feed, MARKET, None, None, contract=contract)
+
+
+def test_initial_public_capture_recovers_after_transient_connection_reset(tmp_path):
+    cap, _ = capture(tmp_path)
+    calls = []
+    delays = []
+
+    def fetch(*args):
+        calls.append(args)
+        if len(calls) < 3:
+            raise URLError(ConnectionResetError(54, "Connection reset by peer"))
+        return cap
+
+    feed = SimpleNamespace(capture_candles=fetch)
+    result = _capture_with_retry(feed, wait=delays.append)
+    assert result is cap
+    assert len(calls) == 3
+    assert delays == [1, 2]
+
+
+def test_initial_public_capture_exhaustion_cannot_create_an_account(tmp_path):
+    def unavailable(*args):
+        raise URLError(ConnectionResetError(54, "Connection reset by peer"))
+
+    feed = SimpleNamespace(capture_candles=unavailable)
+    delays = []
+    with pytest.raises(ValueError, match="PUBLIC_SOURCE_CONNECTION_FAILED"):
+        _capture_with_retry(feed, wait=delays.append)
+    assert delays == [1, 2]
+    target = tmp_path / "unavailable-paper"
+    with pytest.raises(ValueError, match="PUBLIC_SOURCE_CONNECTION_FAILED"):
+        prepare(target, feed=feed)
+    assert not target.exists()
+
+
+@pytest.mark.parametrize("status", [401, 403, 404, 429])
+def test_initial_public_access_denial_fails_immediately(status):
+    calls = []
+    delays = []
+
+    def denied(*args):
+        calls.append(True)
+        raise HTTPError("https://api.coinbase.com/", status, "failure", {}, None)
+
+    with pytest.raises(ValueError, match=f"PUBLIC_HTTP_{status}"):
+        _capture_with_retry(SimpleNamespace(capture_candles=denied), wait=delays.append)
+    assert len(calls) == 1
+    assert delays == []
+
+
+def test_initial_public_server_5xx_retries_with_a_bound():
+    calls = []
+
+    def unavailable(*args):
+        calls.append(True)
+        raise HTTPError("https://api.coinbase.com/", 503, "service unavailable", {}, None)
+
+    with pytest.raises(ValueError, match="PUBLIC_HTTP_503"):
+        _capture_with_retry(
+            SimpleNamespace(capture_candles=unavailable), wait=lambda _: None
+        )
+    assert len(calls) == 3
