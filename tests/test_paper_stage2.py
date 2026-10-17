@@ -15,7 +15,6 @@ from metatr.paper_display import publish_paper_display
 from metatr.paper_observe import observe
 from metatr.paper_setup import prepare, runner_args
 from metatr.research import digest
-from metatr.strategies import StrategyDecision
 
 
 def fixture_run(tmp_path):
