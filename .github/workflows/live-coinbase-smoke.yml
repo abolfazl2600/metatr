@@ -37,6 +37,21 @@ jobs:
               attrs[field] = d.get(field)
           print(json.dumps(attrs, indent=2, sort_keys=True))
           PY
+      - name: Validate real dated BTC contract metadata
+        run: |
+          python - <<'PY'
+          import json
+          from metatr.exchanges.coinbase_futures import (
+              CoinbaseFuturesFeed, validate_contract_metadata,
+          )
+          product = CoinbaseFuturesFeed().require_bitcoin_future("BIT-27NOV26-CDE")
+          print(json.dumps({
+              "product_id": product["product_id"],
+              "kind": validate_contract_metadata(product),
+              "contract_expiry": product["future_product_details"]["contract_expiry"],
+              "execution": "DISABLED",
+          }, indent=2))
+          PY
       - name: Inspect public M15 response timeline (no prices)
         run: |
           python - <<'PY'
