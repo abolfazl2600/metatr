@@ -43,3 +43,56 @@ Replace the placeholder with an actual ID. If no future is listed or the API ref
 - https://docs.cdp.coinbase.com/api-reference/advanced-trade-api/rest-api/public/list-public-products
 - https://docs.cdp.coinbase.com/api-reference/advanced-trade-api/rest-api/public/get-public-product
 - https://docs.cdp.coinbase.com/api-reference/advanced-trade-api/rest-api/public/get-public-product-candles
+
+
+## October 2026 data-integrity milestone (read-only)
+
+- **Underlying identity:** `product_type=FUTURE` is necessary but not sufficient. For Coinbase
+  Derivatives Exchange (CDE), the currently supported **Bitcoin-only** contract families
+  are `BIP-<DDMMMYY>-CDE` (perpetual-style) and `BIT-<DDMMMYY>-CDE` (dated).
+  Verification checks the native product ID family and, when supplied, the matching
+  `future_product_details.contract_code` plus non-contradictory base/quote identifiers.
+  Bitcoin Cash families `BCP`/`BCH` are rejected regardless of the word "Bitcoin"
+  in their display names. Unknown contract families fail closed until independently verified.
+- **Perpetual ≠ dated:** `BIP`'s far-future `contract_expiry` is treated as opaque metadata;
+  it is not a liquidation deadline. `BIT` requires a timezone-aware expiry timestamp.
+  The public exchange metadata is validated conservatively. Contract eligibility for
+  real-money trading, margin and legal access is **not** established by this check.
+- **Historical completeness:** Candles are sorted into ascending UTC time, limited to
+  the requested window, and validated for OHLCV, timeframe alignment and continuity.
+  Duplicate bars, missing bars or gaps produce an error, never a silent spot fallback.
+  Known exchange maintenance periods may cause genuine gaps; calendar-aware backfill
+  is a future requirement, not a reason to synthesize prices.
+- **Live connectivity:** The check below is a network test, not a mock. It may fail with
+  403, 429, empty candles or incomplete bars according to access rules and liquidity.
+  A successful offline pytest run is not evidence that the live endpoint worked.
+
+### Probe live futures candles without model selection
+
+```bash
+python -m metatr.futures_cli --product-id BIP-20DEC30-CDE \
+  --timeframe M15 --count 64 --probe-candles
+```
+
+This produces `mode=PUBLIC_DATA_PROBE`, `validated_contiguous=true`, UTC range,
+contract kind and `execution=DISABLED` **only if** the public Coinbase endpoint
+returns the requested valid, complete candle window. It never submits orders or
+reads API keys. Use a sufficiently recent short window to avoid known Friday
+maintenance gaps. A dedicated GitHub Actions smoke workflow runs the same check
+on the development branch and is also manually dispatchable.
+
+### Validation and remaining gates
+
+1. Offline unit/regression: BTC/BCH contract family, contradictory metadata, dated
+   expiry, BIP pseudo-expiry, closed candles, sorting, and missing-bar rejection.
+2. Live API: independently confirm metadata returned by the actual venue,
+   response HTTP status, real M15 candle count, gaps, and geographic access.
+3. Before model comparisons: design session-calendar-aware backfill, immutable
+   raw-response provenance, recovery/retry policy and a robust out-of-sample test.
+4. Before paper trading: exchange-native contract specifications, position risk,
+   slippage, taker/maker fees, funding and an auditable order state machine.
+5. Before live trading: explicit opt-in, account/legal permission, reconciler and
+   risk veto. Current trading execution remains disabled.
+
+Official perp specification (no expiration or final settlement):
+https://help.coinbase.com/en/derivatives/perpetual-style-futures/contract-specifications
