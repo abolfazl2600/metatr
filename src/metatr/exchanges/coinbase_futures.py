@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Callable
 from urllib.parse import urlencode
@@ -118,6 +119,16 @@ def validate_contract_metadata(product: dict) -> str:
                 raise ValueError("Invalid perpetual funding_rate")
     return kind
 
+@dataclass(frozen=True)
+class CoinbaseCandleCapture:
+    """Verified market capture with its exact public raw API response."""
+
+    bars: pd.DataFrame
+    raw_payload: dict
+    product: dict
+    captured_at: datetime
+
+
 class CoinbaseFuturesFeed:
     """Strict read-only connector: a spot BTC-USD cannot pass instrument validation."""
 
@@ -161,11 +172,18 @@ class CoinbaseFuturesFeed:
 
     def closed_candles(self, product_id: str, timeframe: str = "M15",
                        count: int = 300, *, now: datetime | None = None) -> pd.DataFrame:
+        """Backward-compatible convenience accessor without raw provenance."""
+        return self.capture_candles(product_id, timeframe, count, now=now).bars
+
+    def capture_candles(self, product_id: str, timeframe: str = "M15",
+                        count: int = 300, *, now: datetime | None = None
+                        ) -> CoinbaseCandleCapture:
+        """Fetch product + public candles together with raw JSON provenance."""
         if timeframe not in GRANULARITIES:
             raise ValueError(f"Unsupported Coinbase timeframe: {timeframe}")
         if not 52 <= count <= 350:
             raise ValueError("Candle count must be between 52 and 350")
-        self.require_bitcoin_future(product_id)
+        product = self.require_bitcoin_future(product_id)
         granularity, seconds = GRANULARITIES[timeframe]
         now = now or datetime.now(timezone.utc)
         if now.tzinfo is None:
@@ -197,4 +215,5 @@ class CoinbaseFuturesFeed:
         if len(bars) != count or (len(timestamps) > 1 and
                                   (timestamps[1:] - timestamps[:-1] != seconds).any()):
             raise ValueError("Missing futures candles or timeline gaps; refuse research signal")
-        return bars
+        return CoinbaseCandleCapture(bars=bars, raw_payload=payload, product=product,
+                                     captured_at=now.astimezone(timezone.utc))
