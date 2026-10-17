@@ -5,12 +5,15 @@ import pandas as pd
 import pytest
 
 from metatr.exchanges.coinbase_futures import (
-    CoinbaseFuturesFeed, bitcoin_future_kind, validate_contract_metadata,\n)
+    CoinbaseFuturesFeed, bitcoin_future_kind, validate_contract_metadata,
+)
 from metatr.futures_core import Market, load_configuration, profile_for, select_model
 
 FUTURE = {"product_id": "BIT-27NOV26-CDE", "product_type": "FUTURE",
           "display_name": "Bitcoin November Future",
-          "future_product_details": {"contract_code": "BIT",\n                                     "contract_expiry": "2026-11-27T16:00:00Z",\n                                     "contract_size": "0.01"}}
+          "future_product_details": {"contract_code": "BIT",
+                                     "contract_expiry": "2026-11-27T16:00:00Z",
+                                     "contract_size": "0.01"}}
 SPOT = {"product_id": "BTC-USD", "product_type": "SPOT", "display_name": "Bitcoin",
         "future_product_details": {}}
 NOW = datetime(2026, 10, 17, 12, 0, tzinfo=timezone.utc)
