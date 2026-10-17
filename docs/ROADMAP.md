@@ -46,3 +46,33 @@
 
 ## V1 extension — macOS/Wine bridge
 MQL5 read-only CSV bridge and Python watcher included; **real-world compilation and E2E integration are pending on macOS Wine**. This is separate from the official Windows Python integration and does not authorize orders.
+
+
+## Implementation checkpoints — October 2026
+
+The seven product versions above remain the high-level roadmap. Coinbase Futures
+is being added incrementally within these versions, without replacing the
+existing MT5/macOS bridge or the Python research engine.
+
+| Priority | Delivery gate | Version | Evidence required |
+| --- | --- | --- | --- |
+| P0 | Native CDE BTC/BCH contract identity and per-product metadata | V1 | Offline regression tests, live metadata consistency |
+| P0 | Actual BIP M15 public candles, complete-bar UTC and gap checks | V1/V2 | Live probe log with product, timestamps and validated count |
+| P1 | Immutable source snapshots and schema-versioned local store | V2 | Reproducible imports, UTC and provenance tests |
+| P1 | Registry/feature interfaces + research experiments | V2/V3 | Versioned config, causal evaluation and OOS validation |
+| P1 | Walk-forward + realistic futures-aware backtester | V3 | Funding, fees, contract size, sessions, OOS performance |
+| P2 | Python to Wine FILE_COMMON to MT5 custom-symbol display | V5/V6 | End-to-end Mac/Wine manual verification; never place MT5 orders |
+| P2 | Paper fills, positions, ledger and risk veto | V7 | Reconciliation and restart tests, kill switch |
+| P3 | Authenticated venue-native real orders (separate gated project) | V7+ | Explicit live permission, legal eligibility and audited readiness |
+
+Architecture boundaries:
+`Exchange MarketData Adapter → Canonical Identity/Contract Metadata → Bar
+Quality Gate → Provenance/Store → Feature/Strategy Registry → Experiment
+Evaluator/Model Selector → Risk Veto → Paper/Live Execution Adapter`.
+Python owns all computation and order flow. A **one-way display adapter**
+publishes verified information to MT5; MT5 is never the authoritative
+source of exchange order or position state.
+
+The first Coinbase live smoke is a separate network-only workflow because
+a green mock CI must never be interpreted as proof of trading-market access.
+Keep `NO_TRADE` and `execution=DISABLED` unless every relevant gate passes.

@@ -1,0 +1,85 @@
+name: Live Coinbase Futures Data Probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - fix/coinbase-btc-contract-validation
+
+permissions:
+  contents: read
+
+jobs:
+  public-futures-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install package
+        run: python -m pip install -e .
+      - name: Inspect public contract identity fields
+        run: |
+          python - <<'PY'
+          import json
+          from metatr.exchanges.coinbase_futures import _public_get
+          p = _public_get("/products/BIP-20DEC30-CDE", {})
+          p = p.get("product", p)
+          d = p.get("future_product_details") or {}
+          fields = ("product_id", "product_type", "display_name", "base_currency_id",
+                    "base_display_symbol", "quote_currency_id", "quote_display_symbol")
+          attrs = {field: p.get(field) for field in fields}
+          for field in ("contract_code", "contract_expiry", "contract_expiry_type",
+                        "contract_root_unit", "contract_size", "venue"):
+              attrs[field] = d.get(field)
+          print(json.dumps(attrs, indent=2, sort_keys=True))
+          PY
+      - name: Validate real dated BTC contract metadata
+        run: |
+          python - <<'PY'
+          import json
+          from metatr.exchanges.coinbase_futures import (
+              CoinbaseFuturesFeed, validate_contract_metadata,
+          )
+          product = CoinbaseFuturesFeed().require_bitcoin_future("BIT-27NOV26-CDE")
+          print(json.dumps({
+              "product_id": product["product_id"],
+              "kind": validate_contract_metadata(product),
+              "contract_expiry": product["future_product_details"]["contract_expiry"],
+              "execution": "DISABLED",
+          }, indent=2))
+          PY
+      - name: Inspect public M15 response timeline (no prices)
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          from metatr.exchanges.coinbase_futures import _public_get
+          seconds, count = 900, 64
+          end = int(datetime.now(timezone.utc).timestamp()) // seconds * seconds
+          start = end - count * seconds
+          response = _public_get("/products/BIP-20DEC30-CDE/candles", {
+              "start": str(start), "end": str(end),
+              "granularity": "FIFTEEN_MINUTE", "limit": count + 1,
+          })
+          rows = response.get("candles", [])
+          stamps = sorted(int(row["start"]) for row in rows)
+          closed = [t for t in stamps if start <= t < end]
+          missing = [start + n * seconds for n in range(count)
+                     if start + n * seconds not in set(closed)]
+          print(json.dumps({
+              "received": len(rows), "closed_in_window": len(closed),
+              "expected": count, "earliest": stamps[0] if stamps else None,
+              "latest": stamps[-1] if stamps else None, "end": end,
+              "missing_count": len(missing), "first_missing": missing[:5],
+              "aligned": all(t % seconds == 0 for t in closed),
+          }, indent=2))
+          PY
+      - name: Check real Coinbase BIP M15 candles (no orders)
+        run: |
+          python -m metatr.futures_cli \
+            --product-id BIP-20DEC30-CDE \
+            --timeframe M15 --count 64 --probe-candles
