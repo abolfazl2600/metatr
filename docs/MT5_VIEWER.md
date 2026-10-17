@@ -81,3 +81,61 @@ remain unchanged. This is distinct from ordinary research signals.
 The v1.02 MQL5 modification has **not** been compiled in the operator's native
 MetaEditor/Wine installation. Python static and protocol tests cannot claim that
 native compilation or visualization acceptance has passed (#20/#21).
+
+
+## v1.03: data-derived vertical scale for external BTC candles (operator validation pending)
+
+The operator's MT5 screenshots showed ~80k-valued verified Coinbase BTC candles
+flattened against a chart price axis extending below zero and above 170k,
+including after unchecking the manual Scale Fix and Bid/Ask/Last price lines.
+This is a **custom-symbol chart display problem**, not evidence of incorrect
+OHLC provenance. The exact reason MT5 selected that automatic range remains
+unproven; the zero custom-symbol quote is a plausible contributor.
+
+The viewer now defaults to `AutoFitExternalPrices=true` and
+`FitRecentBars=80` (allowed range 16–500) and only **after validating the
+whole manifest, source hashes, bar identities, timestamps, and signal pins**:
+
+- Selects Japanese candlesticks on the external chart.
+- Hides the external custom symbol's zero Bid, Ask and Last guide lines.
+- Calculates the lowest Low and highest High of the last 80 **verified**
+  candles, adds 8% range padding or at least 0.05% of the highest price,
+  then updates the display-only `CHART_SCALEFIX`,
+  `CHART_FIXED_MIN`, and `CHART_FIXED_MAX` properties.
+- Reapplies those safe chart properties on repeated, identical-generation
+  refreshes, and recomputes them whenever a newer valid publication arrives.
+- Refuses nonpositive, inverted or excessively large axis bounds. It never
+  modifies, interpolates or synthesizes Coinbase candles or tick quotes;
+  the custom symbol remains trade-disabled and no broker orders exist.
+
+To opt out and retain manual chart scaling, set
+`AutoFitExternalPrices=false` in the **viewer input settings**, not in
+market data, then adjust the chart properties yourself. The viewer can still
+force candlestick mode while attached; this applies only to the external
+chart it owns/reuses, not the operator's broker chart.
+
+### Native Mac/Wine acceptance checklist
+
+1. In your repository run `git switch main && git pull origin main`.
+2. In MT5 choose **File > Open Data Folder**. Copy
+   `mql5/Experts/MetatrFuturesViewer.mq5` from the repository into
+   the terminal's **MQL5/Experts** directory.
+3. Open this source in **MetaEditor**, compile (F7), and capture its build
+   errors/warnings plus build/version. **Python CI cannot compile this MQL5 file**.
+4. Remove/reattach the updated viewer EA on its existing host chart, keeping
+   `CommonSubfolder=metatr\\28c5db082e2e787e` in the *input UI*, and
+   `AutoFitExternalPrices=true`. Keep/retain the existing
+   `EXT_BIP_28c5db08,M15` display chart (close any old duplicate tabs).
+5. With a **fresh, valid** public or explicit fixture publication, the external
+   M15 chart should show distinguishable price candlesticks around their OHLC
+   range without requiring manual Scale Fix; the signal marker and banner must
+   still show `execution=DISABLED`.
+6. Check repeated same-generation polling, publish a new valid candle
+   generation, restart MT5, and confirm the chart stays reasonably scaled
+   without opening duplicates. Collect screenshot and Experts log.
+7. An old `VALID` record can age into `STALE/INVALID`. Do not spoof a
+   timestamp or bypass stale checks merely to exercise price scaling.
+
+**Status:** implementation merged only after Python CI; real MetaEditor
+compilation, native axis appearance and multi-generation refresh still require
+explicit operator acceptance under #20/#21 and chart issue #48.
