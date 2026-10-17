@@ -45,6 +45,7 @@ python -m metatr.cli --source mt5 --symbol EURUSD --timeframe M15 --count 300
 قبل از فرمان آخر، ترمینال MT5 را اجرا و **حساب دمو** را متصل کنید. برای کار از مک می‌توانید از VS Code Remote SSH به ویندوز متصل شوید. سرویس شبکه‌ای/Bridge امن یک قابلیت آینده است و **در این نسخه پیاده‌سازی نشده**.
 
 ## مستندات
+- **[گزارش کامل مراحل انجام‌شده روی مک، مسیر فولدرهای MetaTrader/Wine و دستورات ترمینال (۱۷ اکتبر ۲۰۲۶)](docs/LOCAL_MAC_MT5_PROGRESS_FA.md)**
 - [نصب و توسعه روی مک](docs/SETUP_MAC.md)
 - [اتصال ویندوز/MT5](docs/MT5_WINDOWS.md)
 - [معماری](docs/ARCHITECTURE.md)
