@@ -80,7 +80,8 @@ def ready_dataset(args, market, calendar):
     return dataset
 
 
-def capture_public(feed, market, store, calendar, *, count=80, now=None, wait=time.sleep):
+def capture_public(feed, market, store, calendar, *, count=80, now=None, wait=time.sleep,
+                   contract=None):
     """Bounded public-read retry only; never calls private or authenticated endpoints."""
     for attempt in range(3):
         try:
@@ -104,6 +105,23 @@ def capture_public(feed, market, store, calendar, *, count=80, now=None, wait=ti
             if attempt == 2:
                 raise ValueError("PUBLIC_SOURCE_TIMEOUT") from None
             wait(2**attempt)
+    if contract is not None:
+        contract.validate(capture.product, capture.captured_at)
+        product = capture.product
+        if any(product.get(k) for k in ("is_disabled", "trading_disabled", "cancel_only")):
+            raise ValueError("PUBLIC_CONTRACT_UNAVAILABLE")
+        session = product.get("fcm_trading_session_details")
+        if session is not None:
+            observed = pd.Timestamp(capture.captured_at)
+            if (not session.get("is_session_open")
+                    or session.get("session_state") != "FCM_TRADING_SESSION_STATE_OPEN"
+                    or not pd.Timestamp(session["open_time"]) <= observed < (
+                        pd.Timestamp(session["close_time"]))):
+                raise ValueError("PUBLIC_SESSION_CLOSED")
+            maintenance = session.get("maintenance")
+            if maintenance and pd.Timestamp(maintenance["start_time"]) <= observed < (
+                pd.Timestamp(maintenance["end_time"])):
+                raise ValueError("PUBLIC_SESSION_MAINTENANCE")
     store.save_snapshot(
         market,
         source="coinbase_public_futures",
@@ -278,6 +296,7 @@ def main(argv=None):
                         calendar,
                         count=args.count,
                         now=now_utc(),
+                        contract=contract,
                     )
                     result = runner._process(
                         dataset,

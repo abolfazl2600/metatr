@@ -176,3 +176,9 @@ unit tests do not establish them. No real execution option exists.
 [SQLite → research → MT5 operator command and evidence](docs/PIPELINE_HANDOFF.md)
 provides an offline fixture harness and a separate opt-in public Coinbase capture.
 Native visual acceptance remains pending; execution is disabled.
+
+## شروع سریع Paper روی مک
+
+[فرمان راه‌اندازی و تنظیمات سناریوی Paper](docs/PAPER_QUICKSTART_FA.md):
+ساخت خودکار حساب فرضی، دریافت مشخصات بومی و جلسهٔ باز از API و شروع polling.
+معاملهٔ واقعی غیرفعال است؛ تأیید پایش عملیاتی همچنان جداست.
