@@ -15,6 +15,7 @@ from metatr.paper_display import publish_paper_display
 from metatr.paper_observe import observe
 from metatr.paper_setup import prepare, runner_args
 from metatr.research import digest
+from metatr.validation import slice_dataset
 
 
 def fixture_run(tmp_path):
@@ -29,7 +30,8 @@ def fixture_run(tmp_path):
 
 def test_verified_paper_signal_publishes_one_nonexecuting_marker_and_evidence(tmp_path):
     paper, data, spec, contract, costs, policy, runner, result, decision = fixture_run(tmp_path)
-    assert decision.data_sha256 != data.data_sha256
+    assert slice_dataset(data, 0, len(data.bars) - 1).data_sha256 != data.data_sha256
+    assert decision.data_sha256 == data.data_sha256
     handoff = publish_paper_display(
         data, decision, spec, contract, result, tmp_path / "common",
         now_utc=data.asof_utc, evidence_dir=tmp_path / "evidence",
