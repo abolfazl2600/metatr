@@ -153,3 +153,7 @@ results cannot guarantee live profitability.
 One-way external futures display publishing and a synthetic offline fixture command:
 [docs/MT5_OUTBOUND.md](docs/MT5_OUTBOUND.md). Actual MT5/Wine rendering requires
 separate native viewer compilation and manual acceptance.
+
+Isolated simulated accounts and append-only paper ledger foundations:
+[docs/PAPER_LEDGER.md](docs/PAPER_LEDGER.md). Nothing starts on import; real trading
+is outside this subsystem.
