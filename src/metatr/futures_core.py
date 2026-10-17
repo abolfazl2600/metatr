@@ -12,6 +12,7 @@ from pathlib import Path
 import pandas as pd
 
 from metatr.data import validate_bars
+from metatr.strategy_signals import SIGNALS
 
 
 @dataclass(frozen=True)
@@ -35,27 +36,18 @@ class Candidate:
     def predict(self, closes: pd.Series) -> int:
         """-1=short, 0=flat, 1=long; only closes up through prediction time."""
         if self.name == "momentum":
-            lookback = int(self.parameters.get("lookback", 8))
-            threshold = float(self.parameters.get("threshold", 0.001))
-            if not 1 <= lookback <= 200 or not 0 <= threshold <= 1:
+            parameters = {"lookback": int(self.parameters.get("lookback", 8)),
+                          "threshold": float(self.parameters.get("threshold", 0.001))}
+            if not 1 <= parameters["lookback"] <= 200 or not 0 <= parameters["threshold"] <= 1:
                 raise ValueError("Invalid momentum parameters")
-            if len(closes) <= lookback:
-                return 0
-            move = float(closes.iloc[-1] / closes.iloc[-1 - lookback] - 1)
-            return (move > threshold) - (move < -threshold)
-        if self.name == "ema_cross":
-            fast = int(self.parameters.get("fast", 12))
-            slow = int(self.parameters.get("slow", 26))
-            if not 1 <= fast < slow <= 300:
+        elif self.name == "ema_cross":
+            parameters = {"fast": int(self.parameters.get("fast", 12)),
+                          "slow": int(self.parameters.get("slow", 26))}
+            if not 1 <= parameters["fast"] < parameters["slow"] <= 300:
                 raise ValueError("Invalid EMA periods")
-            if len(closes) < slow + 2:
-                return 0
-            left = closes.ewm(span=fast, adjust=False).mean()
-            right = closes.ewm(span=slow, adjust=False).mean()
-            before = float(left.iloc[-2] - right.iloc[-2])
-            after = float(left.iloc[-1] - right.iloc[-1])
-            return 1 if before <= 0 < after else -1 if before >= 0 > after else 0
-        raise ValueError(f"Unknown model: {self.name}")
+        else:
+            raise ValueError(f"Unknown model: {self.name}")
+        return SIGNALS[self.name](closes, parameters)
 
 
 def profile_for(market: Market, configuration: dict) -> dict:

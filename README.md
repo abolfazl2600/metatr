@@ -130,3 +130,6 @@ Legacy wildcard profiles require explicit `--allow-wildcard` and materialize a
 **real exact market**, never `*`. All returned specs state `execution=DISABLED`;
 `draft` / `research` / `retired` statuses do not authorize trading. See
 [docs/MODEL_REGISTRY.md](docs/MODEL_REGISTRY.md) for SQL, lifecycle, API and CLI.
+
+Pure pinned research adapters and the developer extension contract are documented in
+[docs/STRATEGIES.md](docs/STRATEGIES.md). Legacy futures selection remains compatible.
