@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "coinbase:BTC:FUTURE:*:M15": {
+      "models": [
+        {"name": "ema_cross", "parameters": {"fast": 12, "slow": 26}},
+        {"name": "momentum", "parameters": {"lookback": 8, "threshold": 0.001}}
+      ],
+      "evaluation_bars": 80,
+      "min_trades": 3,
+      "round_trip_cost_bps": 12
+    }
+  }
+}
