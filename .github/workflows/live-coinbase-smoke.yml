@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - fix/coinbase-btc-contract-validation
+      - feat/coinbase-atomic-live-ingest
 
 permissions:
   contents: read
@@ -83,3 +83,23 @@ jobs:
           python -m metatr.futures_cli \
             --product-id BIP-20DEC30-CDE \
             --timeframe M15 --count 64 --probe-candles
+      - name: Save live futures snapshot to SQLite and recover it
+        run: |
+          python -m metatr.futures_cli \
+            --product-id BIP-20DEC30-CDE \
+            --timeframe M15 --count 64 --probe-candles \
+            --store "$RUNNER_TEMP/coinbase_futures.sqlite"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from metatr.futures_core import Market
+          from metatr.futures_store import FuturesSQLiteStore
+
+          database = Path(os.environ["RUNNER_TEMP"]) / "coinbase_futures.sqlite"
+          market = Market("coinbase", "BTC", "FUTURE", "BIP-20DEC30-CDE", "M15")
+          store = FuturesSQLiteStore(database)
+          bars = store.read_bars(market)
+          assert len(bars) == 64
+          assert bars.index.is_monotonic_increasing
+          print("LIVE_SQLITE_RECOVERY_OK", market.key, len(bars))
+          PY
