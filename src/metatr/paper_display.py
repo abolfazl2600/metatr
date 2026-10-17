@@ -1,7 +1,8 @@
 """Publish the latest *committed* simulated Paper signal, never an order.
 
 Paper strategies pin a per-bar validated prefix. Display manifests pin a full
-snapshot. The two SHA values are intentionally different. Verify both rather
+snapshot. Earlier bar prefixes may differ; the latest full prefix often matches.
+Verify both rather
 than relaxing either validation contract or reusing an unverified decision.
 """
 
@@ -51,10 +52,16 @@ def publish_paper_display(dataset, decision, spec, contract, result, output_dir,
         dataset.market, latest, closed, utc(dataset.asof_utc),
         prefix.snapshot_ids, prefix.data_sha256, spec.warmup_bars, 0,
     ))
-    veto = (decision.action == "NO_TRADE" and expected.action in ("LONG", "SHORT")
-            and decision.reason == "PAPER_SIMULATED PAPER_SIMULATED_RISK_VETO")
-    if decision.action != expected.action and not veto:
-        raise ValueError("Paper signal does not match pinned strategy or documented risk veto")
+    veto_reason = "PAPER_SIMULATED PAPER_SIMULATED_RISK_VETO"
+    if decision.reason == veto_reason:
+        if decision.action != "NO_TRADE" or expected.action not in ("LONG", "SHORT"):
+            raise ValueError("Paper veto cannot be relabeled as an actionable signal")
+        veto = True
+    else:
+        if (decision.reason != "PAPER_SIMULATED " + expected.reason
+                or decision.action != expected.action):
+            raise ValueError("Paper decision differs from pinned strategy event")
+        veto = False
     if veto:
         display_reason = "PAPER_SIMULATED_RISK_VETO_NO_ORDER"
     else:
