@@ -26,7 +26,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--count", type=int, default=300)
     parser.add_argument("--config", type=Path, default=Path("config/markets.json"))
     parser.add_argument("--output", type=Path, help="Optional JSON signal for future MT5 display")
-    parser.add_argument("--store", type=Path, help="Persist public API raw data and validated bars to SQLite")
+    parser.add_argument(
+        "--store", type=Path,
+        help="Persist public API raw data and validated bars to SQLite",
+    )
     args = parser.parse_args(argv)
     if not args.list and not args.product_id:
         parser.error("Use --list first, then supply a verified --product-id")
