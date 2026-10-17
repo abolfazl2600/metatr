@@ -1,0 +1,24 @@
+name: Python CI
+on:
+  push:
+  pull_request:
+jobs:
+  offline-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: Lint
+        run: ruff check .
+      - name: Test
+        run: python -m pytest -q
+      - name: CLI smoke test
+        run: python -m metatr.cli --source sample --symbol EURUSD --timeframe M15

@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Sample signal (offline)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "metatr.cli",
+      "console": "integratedTerminal",
+      "args": ["--source", "sample", "--symbol", "EURUSD", "--timeframe", "M15"]
+    },
+    {
+      "name": "MT5 terminal (Windows only)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "metatr.cli",
+      "console": "integratedTerminal",
+      "args": ["--source", "mt5", "--symbol", "EURUSD", "--timeframe", "M15", "--count", "300"]
+    }
+  ]
+}
