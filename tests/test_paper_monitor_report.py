@@ -1,7 +1,6 @@
 """Monitoring summary never confuses offline timestamps with real observations."""
 
 import json
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
