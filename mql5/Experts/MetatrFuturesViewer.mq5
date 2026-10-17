@@ -1,6 +1,6 @@
 // One-way external-data viewer. Native compile/Wine acceptance is REQUIRED.
 #property strict
-#property version "1.02"
+#property version "1.03"
 #property description "EXTERNAL / SIMULATED DATA viewer; execution DISABLED"
 
 input string CommonSubfolder="metatr\\REPLACE_WITH_PRINTED_MARKET_HASH";
@@ -10,6 +10,8 @@ input string ExpectedVersion="1.0.0";
 input int PollSeconds=5;
 input int MaximumBars=1000;
 input int MaximumAgeBars=3;
+input bool AutoFitExternalPrices=true;
+input int FitRecentBars=80;
 
 string last_run="", custom_symbol="", error_reason="", display_kind="RESEARCH_ONLY";
 long display_chart=0;
@@ -118,6 +120,48 @@ void Banner(const string state,const color tone)
    }
 }
 
+// Fit a self-contained custom BTC chart to *validated* sourced OHLC, not an
+// unset zero Bid/Last quote. No price, tick, symbol or market data is altered.
+// This display-only fixed range is recomputed whenever the source refreshes.
+bool ConfigureDisplayChart(MqlRates &rates[],const int count)
+{
+   if(display_chart<=0 || ChartSymbol(display_chart)!=custom_symbol ||
+      ChartPeriod(display_chart)!=PERIOD_M15)
+      return Fail("external display chart is missing or has wrong identity");
+   if(!ChartSetInteger(display_chart,CHART_MODE,CHART_CANDLES) ||
+      !ChartSetInteger(display_chart,CHART_FOREGROUND,false) ||
+      !ChartSetInteger(display_chart,CHART_SHOW_BID_LINE,false) ||
+      !ChartSetInteger(display_chart,CHART_SHOW_ASK_LINE,false) ||
+      !ChartSetInteger(display_chart,CHART_SHOW_LAST_LINE,false))
+      return Fail("cannot configure non-trading candle display");
+
+   if(!AutoFitExternalPrices)
+      return true; // Operator may explicitly disable managed scaling.
+
+   int first=(count>FitRecentBars ? count-FitRecentBars : 0);
+   double low=rates[first].low,high=rates[first].high;
+   for(int i=first+1;i<count;i++)
+   {
+      low=MathMin(low,rates[i].low);
+      high=MathMax(high,rates[i].high);
+   }
+   // Every rate was source validated (positive, finite, high >= low).
+   // Use at least 0.05% padding for a flat market and 8% for a moving one.
+   double pad=MathMax((high-low)*0.08,high*0.0005);
+   double bottom=MathMax(0.00000001,low-pad),top=high+pad;
+   if(!MathIsValidNumber(bottom) || !MathIsValidNumber(top) ||
+      bottom<=0 || top<=bottom || top>1.0e12)
+      return Fail("invalid bounded external price scale");
+   if(!ChartSetInteger(display_chart,CHART_SCALEFIX_11,false) ||
+      !ChartSetInteger(display_chart,CHART_SCALE_PT_PER_BAR,false) ||
+      !ChartSetInteger(display_chart,CHART_SCALEFIX,true) ||
+      !ChartSetDouble(display_chart,CHART_FIXED_MIN,bottom) ||
+      !ChartSetDouble(display_chart,CHART_FIXED_MAX,top))
+      return Fail("failed to set validated candle price bounds");
+   ChartRedraw(display_chart);
+   return true;
+}
+
 bool Refresh()
 {
    string text,lines[],m[];
@@ -183,7 +227,11 @@ bool Refresh()
                  "PAPER SIMULATED SIGNAL / NOT ORDER" : "RESEARCH ONLY");
    if(m[13]==last_run && display_chart>0 && ChartSymbol(display_chart)==custom_symbol &&
       ChartPeriod(display_chart)==PERIOD_M15)
-   { Banner("VALID "+m[16]+"@"+m[17]+" last UTC "+TimeToString((datetime)latest),clrSilver); return true; }
+   {
+      if(!ConfigureDisplayChart(rates,count)) return false;
+      Banner("VALID "+m[16]+"@"+m[17]+" last UTC "+TimeToString((datetime)latest),clrSilver);
+      return true;
+   }
    // Only after complete validation may the custom history/chart be touched.
    custom_symbol="EXT_"+StringSubstr(ExpectedProduct,0,3)+"_"+StringSubstr(CommonSubfolder,StringLen(CommonSubfolder)-16,8);
    bool custom=false;
@@ -204,7 +252,9 @@ bool Refresh()
       if(display_chart<=0) display_chart=ChartOpen(custom_symbol,PERIOD_M15);
    }
    if(display_chart<=0) return Fail("open M15 external chart manually and retry");
-   ChartSetSymbolPeriod(display_chart,custom_symbol,PERIOD_M15);
+   if(!ChartSetSymbolPeriod(display_chart,custom_symbol,PERIOD_M15) ||
+      !ConfigureDisplayChart(rates,count))
+      return Fail("failed to prepare scaled custom M15 chart");
    int first=(int)MathMax(0,signals-500);
    for(int i=first;i<signals;i++)
    {
@@ -247,7 +297,8 @@ bool Refresh()
 int OnInit()
 {
    if(PollSeconds<1 || PollSeconds>60 || MaximumBars<1 || MaximumBars>1000 ||
-      MaximumAgeBars<1 || MaximumAgeBars>100 || StringLen(CommonSubfolder)!=23 ||
+      MaximumAgeBars<1 || MaximumAgeBars>100 || FitRecentBars<16 || FitRecentBars>500 ||
+      StringLen(CommonSubfolder)!=23 ||
       StringSubstr(CommonSubfolder,0,7)!="metatr\\" ||
       (StringSubstr(ExpectedProduct,0,4)!="BIP-" && StringSubstr(ExpectedProduct,0,4)!="BIT-"))
       return INIT_PARAMETERS_INCORRECT;
