@@ -13,6 +13,7 @@ from metatr.exchanges.coinbase_futures import (
     validate_contract_metadata,
 )
 from metatr.futures_core import Market, load_configuration, select_model
+from metatr.futures_store import FuturesSQLiteStore
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -25,11 +26,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--count", type=int, default=300)
     parser.add_argument("--config", type=Path, default=Path("config/markets.json"))
     parser.add_argument("--output", type=Path, help="Optional JSON signal for future MT5 display")
+    parser.add_argument("--store", type=Path, help="Persist public API raw data and validated bars to SQLite")
     args = parser.parse_args(argv)
     if not args.list and not args.product_id:
         parser.error("Use --list first, then supply a verified --product-id")
-    if args.list and args.probe_candles:
-        parser.error("--list and --probe-candles cannot be combined")
+    if args.list and (args.probe_candles or args.store):
+        parser.error("--list cannot be combined with --probe-candles or --store")
     feed = CoinbaseFuturesFeed()
     try:
         if args.list:
@@ -39,9 +41,10 @@ def main(argv: list[str] | None = None) -> int:
                                     "display_name": p.get("display_name"),
                                     "details": p.get("future_product_details", {})} for p in items]}
         else:
-            bars = feed.closed_candles(args.product_id, args.timeframe, args.count)
+            capture = feed.capture_candles(args.product_id, args.timeframe, args.count)
+            bars = capture.bars
             if args.probe_candles:
-                product = feed.require_bitcoin_future(args.product_id)
+                product = capture.product
                 output = {
                     "mode": "PUBLIC_DATA_PROBE",
                     "exchange": "coinbase",
@@ -59,6 +62,16 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 market = Market("coinbase", "BTC", "FUTURE", args.product_id, args.timeframe)
                 output = select_model(bars, market, load_configuration(args.config))
+            if args.store:
+                market = Market("coinbase", "BTC", "FUTURE", args.product_id, args.timeframe)
+                snapshot_id = FuturesSQLiteStore(args.store).save_snapshot(
+                    market, source="coinbase_public_futures",
+                    raw_payload=capture.raw_payload,
+                    contract_metadata=capture.product,
+                    bars=bars, asof=capture.captured_at,
+                )
+                output["storage"] = {"schema_version": 1, "snapshot_id": snapshot_id,
+                                     "market": market.key}
     except (OSError, ValueError, KeyError, TypeError) as exc:
         print(f"Futures data error: {exc}", file=sys.stderr)
         return 1
