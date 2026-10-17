@@ -205,3 +205,19 @@ def test_cli_live_probe_contract_offline(monkeypatch, capsys):
     assert probe["validated_contiguous"] is True
     assert probe["execution"] == "DISABLED"
     assert probe["spot_substitution"] is False
+
+
+
+def test_live_coinbase_perpetual_empty_optional_base_currency_fields():
+    actual_metadata = {
+        **PERP, "base_currency_id": "", "base_display_symbol": "",
+        "quote_currency_id": "USD", "quote_display_symbol": "USD",
+        "future_product_details": {
+            **PERP["future_product_details"], "contract_root_unit": "BTC",
+            "contract_expiry_type": "EXPIRING",
+        },
+    }
+    assert validate_contract_metadata(actual_metadata) == "PERPETUAL_STYLE"
+    not_bitcoin = {**actual_metadata, "future_product_details": {
+        **actual_metadata["future_product_details"], "contract_root_unit": "BCH"}}
+    assert bitcoin_future_kind(not_bitcoin) is None
