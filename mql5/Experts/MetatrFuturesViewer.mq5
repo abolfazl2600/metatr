@@ -1,6 +1,6 @@
 // One-way external-data viewer. Native compile/Wine acceptance is REQUIRED.
 #property strict
-#property version "1.01"
+#property version "1.02"
 #property description "EXTERNAL / SIMULATED DATA viewer; execution DISABLED"
 
 input string CommonSubfolder="metatr\\REPLACE_WITH_PRINTED_MARKET_HASH";
@@ -11,7 +11,7 @@ input int PollSeconds=5;
 input int MaximumBars=1000;
 input int MaximumAgeBars=3;
 
-string last_run="", custom_symbol="", error_reason="";
+string last_run="", custom_symbol="", error_reason="", display_kind="RESEARCH_ONLY";
 long display_chart=0;
 const string PREFIX="metatr_external_";
 const string MANIFEST_HEADER="schema_version,market,source,capture_utc,latest_bar_utc,bar_count,signal_count,bars_file,bars_bytes,bars_sha256,signals_file,signals_bytes,signals_sha256,run_id,data_sha256,contract_sha256,strategy_id,strategy_version,config_sha256,status,execution,label";
@@ -103,7 +103,7 @@ bool Lines(const string text,const string header,string &lines[])
 void Banner(const string state,const color tone)
 {
    string text="EXTERNAL / SIMULATED DATA | "+ExpectedProduct+" M15 | "+state+
-               " | execution=DISABLED | UTC, volume x1e-8 source units";
+               " | "+display_kind+" | execution=DISABLED | UTC, volume x1e-8 source units";
    Comment(text);
    if(display_chart>0)
    {
@@ -161,8 +161,9 @@ bool Refresh()
       previous=opened;
    }
    if(previous!=latest) return Fail("latest candle mismatch");
-   long signal_times[]; string actions[]; int bar_positions[];
-   ArrayResize(signal_times,signals); ArrayResize(actions,signals); ArrayResize(bar_positions,signals);
+   long signal_times[]; string actions[],signal_reasons[]; int bar_positions[];
+   ArrayResize(signal_times,signals); ArrayResize(actions,signals);
+   ArrayResize(signal_reasons,signals); ArrayResize(bar_positions,signals);
    previous=0;
    for(int i=0;i<signals;i++)
    {
@@ -172,11 +173,14 @@ bool Refresh()
       for(int j=0;j<count;j++) if((long)rates[j].time==opened) { position=j; break; }
       if(position<0 || opened<=previous || StringToInteger(f[1])!=opened+900 ||
          (f[2]!="LONG" && f[2]!="SHORT" && f[2]!="NO_TRADE") ||
-         f[3]!=m[16] || f[4]!=m[17] || f[5]!=m[18] || f[7]!=m[14])
+         f[3]!=m[16] || f[4]!=m[17] || f[5]!=m[18] || f[7]!=m[14] || StringLen(f[6])>160)
          return Fail("signal timestamp/model/provenance mismatch");
-      signal_times[i]=opened; actions[i]=f[2]; bar_positions[i]=position; previous=opened;
+      signal_times[i]=opened; actions[i]=f[2]; signal_reasons[i]=f[6];
+      bar_positions[i]=position; previous=opened;
    }
    if(previous!=latest) return Fail("missing latest signal");
+   display_kind=(StringFind(signal_reasons[signals-1],"PAPER_SIMULATED_")==0 ?
+                 "PAPER SIMULATED SIGNAL / NOT ORDER" : "RESEARCH ONLY");
    if(m[13]==last_run && display_chart>0 && ChartSymbol(display_chart)==custom_symbol &&
       ChartPeriod(display_chart)==PERIOD_M15)
    { Banner("VALID "+m[16]+"@"+m[17]+" last UTC "+TimeToString((datetime)latest),clrSilver); return true; }
@@ -215,9 +219,15 @@ bool Refresh()
       { if(!ObjectCreate(display_chart,name,kind,0,(datetime)signal_times[i],price)) return Fail("marker creation failed"); }
       else if(!ObjectMove(display_chart,name,0,(datetime)signal_times[i],price)) return Fail("marker move failed");
       ObjectSetInteger(display_chart,name,OBJPROP_COLOR,flat ? clrGray : (actions[i]=="LONG" ? clrLime : clrTomato));
-      if(flat) ObjectSetString(display_chart,name,OBJPROP_TEXT,"NO_TRADE");
+      if(flat) ObjectSetString(display_chart,name,OBJPROP_TEXT,
+                                (StringFind(signal_reasons[i],"PAPER_SIMULATED_")==0 ?
+                                 "PAPER NO_TRADE" : "NO_TRADE"));
       else ObjectSetInteger(display_chart,name,OBJPROP_ARROWCODE,actions[i]=="LONG" ? 233 : 234);
-      ObjectSetString(display_chart,name,OBJPROP_TOOLTIP,actions[i]+" research "+m[16]+"@"+m[17]+" run "+m[13]);
+      string signal_label=(StringFind(signal_reasons[i],"PAPER_SIMULATED_")==0 ?
+                           "PAPER simulated research signal, NOT an order" :
+                           "RESEARCH signal only");
+      ObjectSetString(display_chart,name,OBJPROP_TOOLTIP,actions[i]+" "+signal_label+
+                      " | "+m[16]+"@"+m[17]+" | "+signal_reasons[i]+" | run "+m[13]);
    }
    for(int j=ObjectsTotal(display_chart)-1;j>=0;j--)
    {
