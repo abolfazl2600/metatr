@@ -157,3 +157,40 @@ Issue #25's implementation can merge after CI, but operational sign-off remains
 open until this evidence exists. Any future real-money development requires a
 new separately approved issue covering eligibility, authenticated execution,
 live reconciliation and hard risk controls. There is no real execution option here.
+
+## Immutable point-in-time observation for monitored Paper acceptance
+
+After preparing the public scenario, `paper_observe` records an independent, strictly
+**read-only local** observation of the Paper journal and last-known public source.
+It never fetches Coinbase data, starts polling, resets HALT, or claims that a
+historical record proves 14 days of monitoring. Each call copies the Paper SQLite
+file through the WAL-aware SQLite backup API, reconciles its hash-chained journal
+against that snapshot and saves a content-addressed JSON evidence file.
+
+```bash
+python3 -m metatr.paper_observe --workspace "$HOME/metatr-state/paper-bip" \
+  --backup --require-healthy
+```
+
+The evidence is written to `$HOME/metatr-state/paper-bip/observations/<sha256>.json`.
+With `--backup`, independently consistent Paper, market and registry SQLite files
+are retained in `observations/backups/`, named by their SHA-256. This is **not**
+a cross-database atomic snapshot: separate databases may represent slightly
+different instants while the worker operates. Backup retention is manual; do not
+commit these local financial/provenance databases to Git.
+
+The evidence includes wall-clock observation UTC, journal head/event count,
+reconciliation outcome, last closed bar, source age, Paper equity/positions,
+HALT state, session coverage boundary, and explicit alert codes. `--require-healthy`
+returns status 2 for any alert, without changing the Paper account. A newly
+prepared but not-yet-run account correctly reports missing checkpoints/receipts.
+Use one command per observed interval, record any downtime, and investigate
+alerts before resuming. `--now-utc` is a deterministic operator/testing override;
+such evidence is labeled `OPERATOR_OVERRIDE` and is **not** proof of real-time
+monitoring. Missing or corrupt Paper DBs produce an unsafe observation rather
+than a false success. The system cannot retroactively create past observations.
+
+For operational sign-off, collect observations over the agreed period along
+with operator incident reviews and native screenshots as separate evidence.
+Even a set of healthy snapshots does not prove continuous uptime, actual trade
+execution or strategy profitability.

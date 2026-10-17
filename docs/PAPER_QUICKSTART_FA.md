@@ -86,3 +86,24 @@ backup در راهنمای عملیات استفاده کنید.
 `https://api.coinbase.com/api/v3/brokerage/market/products/BIP-20DEC30-CDE`.
 مرجع توضیح قرارداد: [Coinbase contract specifications](https://help.coinbase.com/en/derivatives/perpetual-style-futures/contract-specifications).
 پنجرهٔ جلسه و تعمیرات از API می‌آید؛ از توضیحات عمومی، تعطیلات آینده استنتاج نمی‌شود.
+
+## ثبت شواهد پایش و پشتیبان‌گیری
+
+برای ذخیرهٔ وضعیت واقعیِ همین لحظه در کنار بررسی سلامت دفتر حساب Paper، از
+فرمان زیر استفاده کنید:
+
+```bash
+python3 -m metatr.paper_observe \
+  --workspace "$HOME/metatr-state/paper-bip" \
+  --backup --require-healthy
+```
+
+هر اجرا یک سند JSON تغییرناپذیر شامل زمان UTC، هش زنجیرهٔ رخدادها، موجودی
+فرضی، آخرین کندل پردازش‌شده، وضعیت HALT و هش فایل‌های پشتیبان ایجاد می‌کند.
+فایل‌ها در `observations/` و `observations/backups/` ذخیره می‌شوند.
+خروج با کد `2` یعنی هشدار سلامت ثبت شده و **حساب به‌صورت خودکار ریست نمی‌شود**.
+پشتیبان هر دیتابیس در زمان خودش سازگار است، اما سه دیتابیس یک تراکنش مشترک ندارند.
+
+این یک ثبت لحظه‌ای است، نه سرویس دائمی یا اثبات پایش ۱۴روزه. بهتر است در هر
+نوبت بررسی توسط اپراتور اجرا شود و رخدادهای غیرعادی جداگانه بررسی شوند.
+برای جزئیات: [راهنمای عملیات Paper](PAPER_OPERATIONS.md).

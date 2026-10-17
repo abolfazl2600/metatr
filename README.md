@@ -182,3 +182,11 @@ Native visual acceptance remains pending; execution is disabled.
 [فرمان راه‌اندازی و تنظیمات سناریوی Paper](docs/PAPER_QUICKSTART_FA.md):
 ساخت خودکار حساب فرضی، دریافت مشخصات بومی و جلسهٔ باز از API و شروع polling.
 معاملهٔ واقعی غیرفعال است؛ تأیید پایش عملیاتی همچنان جداست.
+
+
+## Paper operational observation and SQLite backups
+
+Use `python3 -m metatr.paper_observe --workspace "$HOME/metatr-state/paper-bip"
+--backup --require-healthy` for a point-in-time, read-only reconciliation and
+immutable health-evidence snapshot. See [Paper operations](docs/PAPER_OPERATIONS.md)
+for the limits of individual WAL-safe backups and pending 14-day acceptance.
