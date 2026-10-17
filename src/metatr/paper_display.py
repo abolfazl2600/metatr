@@ -33,7 +33,13 @@ def publish_paper_display(dataset, decision, spec, contract, result, output_dir,
     step = pd.Timedelta(seconds=TIMEFRAME_SECONDS[dataset.market.timeframe])
     latest = dataset.bars.index[-1]
     closed = latest + step
-    if (utc(result["last_committed_candle_close_utc"]) != closed
+    if (result.get("execution") != "PAPER_ONLY"
+            or result.get("real_execution_available") is not False
+            or result.get("market") != dataset.market.key
+            or result.get("model_id") != spec.strategy_id
+            or result.get("model_version") != spec.version
+            or result.get("model_config_sha256") != spec.config_sha256
+            or utc(result["last_committed_candle_close_utc"]) != closed
             or utc(decision.bar_open_utc) != latest
             or utc(decision.timestamp) != closed
             or decision.market != dataset.market.key
