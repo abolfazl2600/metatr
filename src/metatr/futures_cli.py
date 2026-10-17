@@ -7,7 +7,11 @@ import json
 import sys
 from pathlib import Path
 
-from metatr.exchanges.coinbase_futures import GRANULARITIES, CoinbaseFuturesFeed
+from metatr.exchanges.coinbase_futures import (
+    GRANULARITIES,
+    CoinbaseFuturesFeed,
+    validate_contract_metadata,
+)
 from metatr.futures_core import Market, load_configuration, select_model
 
 
@@ -15,6 +19,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Coinbase BTC futures (read-only)")
     parser.add_argument("--list", action="store_true", help="Discover actual BTC futures IDs")
     parser.add_argument("--product-id", help="Verified futures product ID (never BTC-USD spot)")
+    parser.add_argument("--probe-candles", action="store_true",
+                        help="Inspect live futures M15 candles, without model selection or orders")
     parser.add_argument("--timeframe", choices=sorted(GRANULARITIES), default="M15")
     parser.add_argument("--count", type=int, default=300)
     parser.add_argument("--config", type=Path, default=Path("config/markets.json"))
@@ -22,6 +28,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if not args.list and not args.product_id:
         parser.error("Use --list first, then supply a verified --product-id")
+    if args.list and args.probe_candles:
+        parser.error("--list and --probe-candles cannot be combined")
     feed = CoinbaseFuturesFeed()
     try:
         if args.list:
@@ -32,8 +40,25 @@ def main(argv: list[str] | None = None) -> int:
                                     "details": p.get("future_product_details", {})} for p in items]}
         else:
             bars = feed.closed_candles(args.product_id, args.timeframe, args.count)
-            market = Market("coinbase", "BTC", "FUTURE", args.product_id, args.timeframe)
-            output = select_model(bars, market, load_configuration(args.config))
+            if args.probe_candles:
+                product = feed.require_bitcoin_future(args.product_id)
+                output = {
+                    "mode": "PUBLIC_DATA_PROBE",
+                    "exchange": "coinbase",
+                    "product_id": args.product_id,
+                    "contract_kind": validate_contract_metadata(product),
+                    "source": "coinbase_public_futures",
+                    "timeframe": args.timeframe,
+                    "count": len(bars),
+                    "first_candle_utc": bars.index[0].isoformat(),
+                    "last_candle_utc": bars.index[-1].isoformat(),
+                    "validated_contiguous": True,
+                    "spot_substitution": False,
+                    "execution": "DISABLED",
+                }
+            else:
+                market = Market("coinbase", "BTC", "FUTURE", args.product_id, args.timeframe)
+                output = select_model(bars, market, load_configuration(args.config))
     except (OSError, ValueError, KeyError, TypeError) as exc:
         print(f"Futures data error: {exc}", file=sys.stderr)
         return 1
