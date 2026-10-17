@@ -8,7 +8,8 @@ from metatr.exchanges.coinbase_futures import CoinbaseFuturesFeed
 from metatr.futures_core import Market, load_configuration, profile_for, select_model
 
 FUTURE = {"product_id": "BTC-27NOV26-CDE", "product_type": "FUTURE",
-          "display_name": "Bitcoin November Future", "future_product_details": {"contract_code": "BTC"}}
+          "display_name": "Bitcoin November Future",
+          "future_product_details": {"contract_code": "BTC"}}
 SPOT = {"product_id": "BTC-USD", "product_type": "SPOT", "display_name": "Bitcoin",
         "future_product_details": {}}
 NOW = datetime(2026, 10, 17, 12, 0, tzinfo=timezone.utc)
