@@ -21,8 +21,6 @@ from metatr.dataset_quality import validate_dataset
 from metatr.exchanges.coinbase_futures import CoinbaseFuturesFeed
 from metatr.futures_store import TIMEFRAME_SECONDS, FuturesSQLiteStore
 from metatr.model_registry import StrategyRegistry
-from metatr.paper_display import publish_paper_display
-from metatr.paper_observe import observe
 from metatr.paper.risk import PaperMarketState, PaperRiskEngine, PaperRiskPolicy
 from metatr.paper.runner import (
     PaperRunner,
@@ -32,6 +30,8 @@ from metatr.paper.runner import (
     status,
 )
 from metatr.paper.store import PaperStore
+from metatr.paper_display import publish_paper_display
+from metatr.paper_observe import observe
 from metatr.research import canonical, digest, parse_market, write_experiment
 
 
