@@ -149,3 +149,7 @@ Purged chronological train/validation/test folds and frozen candidate selection:
 Auditable offline reports, net-equity metrics, OOS cost stress and immutable JSON/CSV
 exports: [docs/BACKTEST_REPORTS.md](docs/BACKTEST_REPORTS.md). Positive backtest
 results cannot guarantee live profitability.
+
+One-way external futures display publishing and a synthetic offline fixture command:
+[docs/MT5_OUTBOUND.md](docs/MT5_OUTBOUND.md). Actual MT5/Wine rendering requires
+separate native viewer compilation and manual acceptance.
