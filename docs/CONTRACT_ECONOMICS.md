@@ -39,3 +39,11 @@ Worked synthetic fixture: 2 contracts × 0.01 BTC at BUY 10,001 USD/BTC yields
 pay spot principal; it changes by realized PnL and charges. Short PnL uses signed
 contracts. `value_position` calculates notional and mark-to-market without placing
 or enabling orders. Specs and scenarios expose stable canonical fingerprints.
+
+Operational profiles can pin `native_contract_fingerprint(metadata)` under the
+versioned NATIVE_CONTRACT_V1 scope: product/family/kind/currency/venue/size and
+native increments/limits, plus dated expiry for BIT. Mutable quotes, funding,
+open interest and session status stay in full raw provenance but do not redefine
+the contract. Legacy full-response SHA pins remain supported. Every public poll
+checks current structural metadata before storage; announced closed/disabled or
+maintenance states halt. See [PAPER_QUICKSTART_FA.md](PAPER_QUICKSTART_FA.md).

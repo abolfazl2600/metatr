@@ -27,6 +27,28 @@ def number(value: Decimal) -> str:
     return format(value, "f")
 
 
+def native_contract_fingerprint(metadata: dict) -> str:
+    """Versioned structural pin; prices/funding/session state remain raw provenance.
+
+    Existing full-response SHA pins stay valid. New operational profiles use this
+    scope so public quotes changing cannot masquerade as contract revisions.
+    """
+    kind = validate_contract_metadata(metadata)
+    details = metadata["future_product_details"]
+    identity = {k: metadata.get(k) for k in (
+        "product_id", "product_type", "product_venue", "base_currency_id",
+        "quote_currency_id", "base_display_symbol", "quote_display_symbol",
+        "price_increment", "base_increment", "base_min_size", "base_max_size",
+        "quote_increment", "quote_min_size", "quote_max_size",
+    )}
+    identity["details"] = {k: details.get(k) for k in (
+        "venue", "contract_code", "contract_size", "contract_root_unit",
+    )}
+    if kind == "DATED":
+        identity["details"]["contract_expiry"] = details.get("contract_expiry")
+    return digest({"scope": "NATIVE_CONTRACT_V1", "kind": kind, "identity": identity})
+
+
 @dataclass(frozen=True)
 class ContractSpec:
     market: Market
@@ -62,7 +84,8 @@ class ContractSpec:
                 or self.market.instrument != "FUTURE"
                 or metadata["product_id"] != self.market.product_id
                 or self.family != self.market.product_id.split("-")[0]
-                or self.kind != kind or self.metadata_sha256 != digest(metadata)
+                or self.kind != kind or self.metadata_sha256 not in (
+                    digest(metadata), native_contract_fingerprint(metadata))
                 or self.roll_policy != "HALT" or at < effective
                 or not all((self.version, self.source, self.calendar_id, self.calendar_version))):
             raise ValueError("Unverified/mismatched/ineffective contract specification")
