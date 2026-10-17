@@ -55,7 +55,7 @@ def test_verified_paper_signal_publishes_one_nonexecuting_marker_and_evidence(tm
     assert paper.inspect("test") == before
 
 
-@pytest.mark.parametrize("mutation", ["prefix", "model", "clock", "action", "halt"])
+@pytest.mark.parametrize("mutation", ["prefix", "model", "clock", "action", "halt", "forged_veto"])
 def test_wrong_provenance_model_checkpoint_risk_or_halt_cannot_publish(tmp_path, mutation):
     paper, data, spec, contract, costs, policy, runner, result, decision = fixture_run(tmp_path)
     if mutation == "prefix":
@@ -68,6 +68,9 @@ def test_wrong_provenance_model_checkpoint_risk_or_halt_cannot_publish(tmp_path,
         decision = replace(decision, action="SHORT" if decision.action != "SHORT" else "LONG")
     elif mutation == "halt":
         result["halted"] = True
+    elif mutation == "forged_veto":
+        decision = replace(decision, reason="PAPER_SIMULATED PAPER_SIMULATED_RISK_VETO",
+                           action="LONG")
     with pytest.raises(ValueError):
         publish_paper_display(data, decision, spec, contract, result, tmp_path / "common",
                               now_utc=data.asof_utc, evidence_dir=tmp_path / "evidence")
