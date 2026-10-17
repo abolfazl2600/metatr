@@ -32,13 +32,16 @@ class SimulationRisk:
     max_drawdown_fraction: str
     event_policy: str = "IGNORE_SAME_DIRECTION_REVERSE_OPPOSITE"
     gap_policy: str = "HALT"
+    max_holding_bars: int | None = None
 
     def validate(self):
         if (min(decimal(self.initial_equity), decimal(self.contracts),
                 decimal(self.max_notional)) <= 0
                 or not 0 < decimal(self.max_drawdown_fraction) <= 1
                 or self.event_policy != "IGNORE_SAME_DIRECTION_REVERSE_OPPOSITE"
-                or self.gap_policy != "HALT"):
+                or self.gap_policy != "HALT"
+                or (self.max_holding_bars is not None and (
+                    type(self.max_holding_bars) is not int or self.max_holding_bars < 1))):
             raise ValueError("Invalid/unsupported simulation risk or event policy")
 
 
@@ -156,6 +159,7 @@ class BacktestEngine:
         ledger = FuturesLedger(risk_config.initial_equity)
         peak = decimal(ledger.cash)
         pending = None
+        entry_pos = None
         events, fills, trades, equity, decisions = [], [], [], [], []
         status = "COMPLETE"
         identity = {"market": dataset.market.key, "strategy": strategy_version.config_sha256,
@@ -183,7 +187,13 @@ class BacktestEngine:
                             fill.price)
                         if notional + decimal(fill.fee) > decimal(risk_config.max_notional):
                             raise ValueError("MAX_NOTIONAL_WITH_FEE_BUFFER")
+                        old_quantity = decimal(ledger.contracts)
                         ledger, trade = apply_fill(ledger, fill, contract_spec)
+                        new_quantity = decimal(ledger.contracts)
+                        if not new_quantity:
+                            entry_pos = None
+                        elif not old_quantity or old_quantity * new_quantity < 0:
+                            entry_pos = pos
                         fill_body = asdict(fill)
                         fill_body["finalized_at_utc"] = closed.isoformat()
                         fill_body["fill_id"] = digest({**identity, **fill_body})
@@ -231,7 +241,10 @@ class BacktestEngine:
                 target = decimal(risk_config.contracts) * side
                 # At the fold boundary, explicitly settle at the *next* bar, never same close.
                 settling = pos == decision_end - 1 and decision_end < len(bars)
-                if settling:
+                horizon_exit = (baseline != "buy_hold" and entry_pos is not None
+                                and risk_config.max_holding_bars is not None
+                                and pos - entry_pos + 1 >= risk_config.max_holding_bars)
+                if settling or horizon_exit:
                     target = Decimal(0)
                 elif pos >= decision_end or not side or current * side > 0:
                     continue
