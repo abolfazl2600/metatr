@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from metatr.calendars import SessionCalendar
 from metatr.data import validate_bars
 from metatr.exchanges.coinbase_futures import validate_contract_metadata
 from metatr.futures_core import Market
@@ -53,6 +54,7 @@ class ResearchDataset:
     end_utc: str
     asof_utc: str
     data_sha256: str
+    validation_json: str = "null"
 
     @property
     def bars(self) -> pd.DataFrame:
@@ -77,7 +79,7 @@ class ResearchDataset:
 
 
 def read_dataset(store: FuturesSQLiteStore, market: Market, start_utc, end_utc,
-                 *, asof_utc=None) -> ResearchDataset:
+                 *, asof_utc=None, calendar: SessionCalendar | None = None) -> ResearchDataset:
     """Strict [start,end) candle-open interval. No partial selection or interpolation.
 
     Captured-as-of defaults to the latest pinned snapshot receipt time, never wall
@@ -89,9 +91,14 @@ def read_dataset(store: FuturesSQLiteStore, market: Market, start_utc, end_utc,
     step = TIMEFRAME_SECONDS[market.timeframe]
     if start >= end or any(t.value % (step * 10**9) for t in (start, end)):
         raise ValueError("Invalid or unaligned [start,end) range")
-    count = int((end - start).total_seconds() // step)
-    if count > 100_000:
+    slots = int((end - start).total_seconds() // step)
+    if slots > 100_000:
         raise ValueError("Research range exceeds 100000 bars")
+    expected = (calendar.expected(market, start, end) if calendar else
+                pd.date_range(start, end, freq=pd.Timedelta(seconds=step), inclusive="left"))
+    count = len(expected)
+    if not count:
+        raise ValueError("No tradable candles in requested range")
     path = store.path.resolve()
     with sqlite3.connect(path.as_uri() + "?mode=ro", uri=True) as db:
         db.execute("BEGIN")
@@ -135,7 +142,6 @@ def read_dataset(store: FuturesSQLiteStore, market: Market, start_utc, end_utc,
     bars_json = canonical(records)
     frame = ResearchDataset(market, bars_json, canonical(snapshots), start.isoformat(),
                             end.isoformat(), asof.isoformat(), "").bars
-    expected = pd.date_range(start, end, freq=pd.Timedelta(seconds=step), inclusive="left")
     if not frame.index.equals(expected):
         raise ValueError("Gapped, duplicated or misaligned candles")
     return ResearchDataset(market, bars_json, canonical(snapshots), start.isoformat(),

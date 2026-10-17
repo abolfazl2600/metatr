@@ -133,3 +133,6 @@ Legacy wildcard profiles require explicit `--allow-wildcard` and materialize a
 
 Pure pinned research adapters and the developer extension contract are documented in
 [docs/STRATEGIES.md](docs/STRATEGIES.md). Legacy futures selection remains compatible.
+
+Historical readiness, as-of reads, sourced session calendars and offline backfill
+planning are documented in [docs/DATASET_QUALITY.md](docs/DATASET_QUALITY.md).
