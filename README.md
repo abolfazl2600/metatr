@@ -59,3 +59,18 @@ python -m metatr.cli --source mt5 --symbol EURUSD --timeframe M15 --count 300
 - [MT5 copy_rates_from_pos](https://www.mql5.com/en/docs/python_metatrader5/mt5copyratesfrompos_py)
 - [VS Code Remote SSH](https://code.visualstudio.com/docs/remote/ssh)
 - [MetaTrader5 on PyPI](https://pypi.org/project/MetaTrader5/)
+
+
+## اتصال MT5 نصب‌شده روی macOS از طریق MQL5 Bridge (جدید)
+مسیر بدون Windows برای دریافت **کندل‌های بسته‌شده**: Expert Advisor فقط‌خواندنی داخل ترمینال MT5 در Wine، فایل CSV مشترک می‌سازد و Python آن را تحلیل می‌کند. اجرای سفارش ندارد.
+
+**راهنمای نصب گام‌به‌گام:** [docs/MAC_BRIDGE.md](docs/MAC_BRIDGE.md)
+
+**کد Expert Advisor:** [mql5/Experts/MetatrCSVBridge.mq5](mql5/Experts/MetatrCSVBridge.mq5)
+
+پس از نصب EA و پیدا کردن مسیر CSV:
+```bash
+python -m metatr.bridge --file "/absolute/path/to/metatr_EURUSD_M15.csv" --symbol EURUSD --timeframe M15 --watch
+```
+
+کامپایل/اجرای EA روی Wine مک هنوز نیازمند تأیید در ترمینال واقعی است. این مسیر از **پکیج رسمی MetaTrader5 Python** استفاده نمی‌کند؛ محدودیت ویندوزِ آن پکیج همچنان برقرار است.

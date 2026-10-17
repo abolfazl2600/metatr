@@ -42,3 +42,7 @@
 - داده‌های زنده/شخصی خارج از GitHub ذخیره می‌شوند.
 - ترکیب مدل‌ها فقط در صورت بهتر بودن معتبر روی داده خارج از نمونه مجاز است.
 - تغییرات هر نسخه با Pull Request و CI بررسی می‌شوند.
+
+
+## V1 extension — macOS/Wine bridge
+MQL5 read-only CSV bridge and Python watcher included; **real-world compilation and E2E integration are pending on macOS Wine**. This is separate from the official Windows Python integration and does not authorize orders.

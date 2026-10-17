@@ -42,3 +42,10 @@ Monitoring, backtests, walk-forward, model lifecycle
 `symbol, timeframe, source, timestamp, action, reason, fast_ema, slow_ema, synthetic`.
 
 پروتکل نسخه‌های بعد باید `signal_id, model_version, horizon, market_regime, confidence_calibration, costs, risk, expiry` را اضافه کند.
+
+
+## V1 optional macOS/Wine file bridge
+- MQL5 EA `mql5/Experts/MetatrCSVBridge.mq5` publishes **only closed** OHLC+tick-volume snapshots through `FILE_COMMON`.
+- Python `src/metatr/bridge.py` reads the CSV via filesystem; no official `MetaTrader5` Python package is imported.
+- Temporary CSV is finalized and renamed with `FileMove`, then the watcher emits one signal per latest-bar timestamp.
+- Signal remains read-only. **EA compilation and Wine filesystem behavior are not verified on the user's Mac yet.**
