@@ -139,3 +139,6 @@ planning are documented in [docs/DATASET_QUALITY.md](docs/DATASET_QUALITY.md).
 
 Exact-decimal futures simulation specifications, assumed costs and unsupported
 margin/funding limits: [docs/CONTRACT_ECONOMICS.md](docs/CONTRACT_ECONOMICS.md).
+
+The deterministic, next-bar hypothetical futures simulator and its accounting/event
+policies are documented in [docs/BACKTEST.md](docs/BACKTEST.md).
