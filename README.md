@@ -106,9 +106,9 @@ private API access or autonomous collection loop.
 Usage, a precise data contract and migration limitations:
 [docs/FUTURES_STORAGE.md](docs/FUTURES_STORAGE.md).
 
-> The Coinbase live-probe CLI remains network-only and does not yet
-> automatically persist its candle response. This next integration will attach
-> raw response provenance before allowing production historical backfill.
+The live-probe CLI can persist the exact public response, contract metadata and
+verified bars atomically with `--probe-candles --store data/raw/futures.sqlite`.
+Replay stored signals without API requests using [offline research](docs/RESEARCH.md).
 
 
 ## Immutable research Strategy & Model Registry (Stage 1/4)
