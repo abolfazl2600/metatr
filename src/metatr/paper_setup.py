@@ -144,7 +144,8 @@ def runner_args(workspace, command, *, max_cycles=None, display_output_dir=None)
                  "--registry", str(workspace / "registry.sqlite"),
                  "--strategy-id", "momentum", "--strategy-version", "1.0.0",
                  "--count", "80", "--poll-seconds", "30", "--max-catch-up-bars", "80",
-                 "--audit-log", str(workspace / "audit.jsonl")]
+                 "--audit-log", str(workspace / "audit.jsonl"),
+                 "--observation-workspace", str(workspace)]
         for flag, name in (("contract-spec", "contract"), ("cost-scenario", "costs"),
                            ("calendar", "calendar"), ("risk-policy", "risk")):
             args += [f"--{flag}", str(workspace / f"{name}.json")]

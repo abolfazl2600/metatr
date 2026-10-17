@@ -194,3 +194,63 @@ For operational sign-off, collect observations over the agreed period along
 with operator incident reviews and native screenshots as separate evidence.
 Even a set of healthy snapshots does not prove continuous uptime, actual trade
 execution or strategy profitability.
+
+## Stage 2: continuous verified M15 Paper processing and MT5 handoff
+
+The explicitly opted-in `paper_setup --start --confirm-paper` worker polls the public
+Coinbase BIP futures feed every 30 seconds **while the already API-confirmed
+session calendar remains valid**. It ingests only validated closed M15 bars and
+reconciles each account before processing new checkpoints. An unchanged last bar
+creates no duplicate simulated order or new chart signal. Unknown gaps, source
+failures and outdated session coverage fail closed. No multi-session renewal is
+implemented here (separate #44). The worker runs only in the current foreground
+terminal and does not install a persistent macOS daemon.
+
+Pass `--display-output-dir /absolute/FILE_COMMON/root` to the setup worker to
+publish the **most recently committed and risk-checked Paper research event** to
+MT5. The Paper decision pins a verified per-bar prefix, whereas the strictly
+validated MQL5 protocol pins the complete display dataset; the publisher checks
+both identities, original model and checkpoint before copying the decision for
+visualization. For a risk-vetoed event it displays `NO_TRADE`. Historical
+unverified Paper decisions are NOT invented to fill older marker positions.
+The manifest always includes `execution=DISABLED` and the marker indicates
+`PAPER_SIMULATED_SIGNAL_NOT_ORDER` (research event, NOT a filled order).
+Journal fills, pending intents, account equity and risk decisions remain in the
+Paper report, not broker charts. Every successful display publication creates
+immutable dual-hash evidence in `$WORKSPACE/display-evidence/`. Chart-side
+verification and native Wine acceptance remain separate/manual (#20/#21).
+
+Each bounded public start automatically writes an immutable observation into
+`$WORKSPACE/observations/` on the **first poll**, whenever a **new M15 bar is
+committed**, and when the worker detects a **HALT**; an operational exception
+attempts to record one final failure observation. Observations are read-only
+SQLite-backed snapshots (see the separate observer section). They do NOT imply
+continuous monitoring between samples. Backups remain an explicit operator
+choice (`python3 -m metatr.paper_observe --backup`) to avoid making a full copy
+every 15 minutes. Observations with stale data, HALT, missing checkpoints or
+reconciliation failures are labeled ATTENTION.
+
+To summarize the on-disk observations without inventing service uptime:
+
+```bash
+python3 -m metatr.paper_setup --workspace "$HOME/metatr-state/paper-bip" --status
+python3 -m metatr.paper_setup --workspace "$HOME/metatr-state/paper-bip" --report
+python3 -m metatr.paper_monitor_report --workspace "$HOME/metatr-state/paper-bip"
+```
+
+`paper_monitor_report` verifies every immutable evidence hash and exact account
+identity, counts real system-clock observations by UTC day, shows alert frequency,
+last Paper status, known gaps between observations and explicitly excludes any
+`--now-utc` operator override from operational evidence. Counts are **samples,
+not a percentage of market uptime**, and the summary always leaves operator
+sign-off pending. The output is a content-addressed JSON file in
+`$WORKSPACE/monitoring-reports/`.
+
+For recovery, stop the foreground loop, record `--status`, write an explicit
+backup and report, review `recent_halt_events`/missing intervals and sourced
+calendar, and reconcile the journal. Starting again is never an automatic HALT
+reset. Reset only through the existing `paper_cli reset-halt --reason ...`
+workflow with the complete pinned files and a fresh, covered data range. The
+first public restart does not synthesize unknown historical fills. If the
+session has ended, leave the account safely stopped until independently sourced
+renewal is supported; don't rewrite JSON calendar files by hand.

@@ -190,3 +190,17 @@ Use `python3 -m metatr.paper_observe --workspace "$HOME/metatr-state/paper-bip"
 --backup --require-healthy` for a point-in-time, read-only reconciliation and
 immutable health-evidence snapshot. See [Paper operations](docs/PAPER_OPERATIONS.md)
 for the limits of individual WAL-safe backups and pending 14-day acceptance.
+
+
+## Paper Stage 2: strict display and sampled observations
+
+The foreground BIP/M15 Paper runner now verifies each committed signal's
+per-bar provenance before publishing a one-marker, read-only MT5 snapshot.
+The display carries **research/PAPER_SIMULATED_SIGNAL_NOT_ORDER** semantics,
+never a broker order; changes are captured in immutable handoff evidence.
+Paper setup automatically records first/new-bar/HALT operator observations;
+`python3 -m metatr.paper_monitor_report --workspace "$HOME/metatr-state/paper-bip"`
+produces an auditable day-by-day *sample-count* report, not an uptime claim.
+See [Paper operations](docs/PAPER_OPERATIONS.md). Session renewal (#44),
+14-day monitoring sign-off (#25), native Wine acceptance (#20/#21), and any
+real-money execution remain outside this stage.
