@@ -5,7 +5,9 @@ import pandas as pd
 import pytest
 
 from metatr.exchanges.coinbase_futures import (
-    CoinbaseFuturesFeed, bitcoin_future_kind, validate_contract_metadata,
+    CoinbaseFuturesFeed,
+    bitcoin_future_kind,
+    validate_contract_metadata,
 )
 from metatr.futures_core import Market, load_configuration, profile_for, select_model
 
