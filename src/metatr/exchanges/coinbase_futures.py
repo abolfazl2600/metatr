@@ -172,8 +172,10 @@ class CoinbaseFuturesFeed:
             raise ValueError("Current time must be timezone-aware")
         end = int(now.timestamp()) // seconds * seconds
         start = end - count * seconds
+        # Coinbase may include the candle whose start equals the requested end.
+        # End one second before the next open to request exactly closed bars.
         payload = self._get(f"/products/{product_id}/candles", {
-            "start": str(start), "end": str(end), "granularity": granularity,
+            "start": str(start), "end": str(end - 1), "granularity": granularity,
             "limit": count,
         })
         rows = payload.get("candles")
