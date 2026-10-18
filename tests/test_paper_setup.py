@@ -8,7 +8,12 @@ import pytest
 
 from metatr.contract_economics import native_contract_fingerprint
 from metatr.display_fixture import fixture_dataset
-from metatr.paper_setup import MARKET, _capture_with_retry, main, prepare, runner_args
+from metatr.paper.runner import WorkerAlreadyRunning, account_lock
+from metatr.paper.store import PaperStore
+from metatr.paper_setup import (
+    MARKET, _capture_with_retry, _checkpoint_continuity, main, prepare,
+    renew_session, runner_args,
+)
 
 
 def capture(tmp_path):
@@ -148,3 +153,162 @@ def test_initial_public_server_5xx_retries_with_a_bound():
             SimpleNamespace(capture_candles=unavailable), wait=lambda _: None
         )
     assert len(calls) == 3
+
+
+
+def renewal_capture(tmp_path, *, session_open="2020-01-01T00:15:00Z",
+                    session_close="2020-01-04T00:00:00Z"):
+    cap, _ = capture(tmp_path)
+    cap.product["fcm_trading_session_details"].update(
+        open_time=session_open, close_time=session_close
+    )
+    return cap
+
+
+def setup_for_renewal(tmp_path):
+    initial, _ = capture(tmp_path)
+    root = tmp_path / "renewable"
+    prepare(root, feed=SimpleNamespace(capture_candles=lambda *a, **k: initial))
+    return root, initial
+
+
+def renewal_feed(cap):
+    return SimpleNamespace(capture_candles=lambda *a, **k: cap)
+
+
+def test_renew_session_publishes_verified_generation_without_mutating_paper(tmp_path):
+    root, initial = setup_for_renewal(tmp_path)
+    renewed = copy.deepcopy(initial)
+    renewed.product["fcm_trading_session_details"].update(
+        open_time="2020-01-01T00:15:00Z", close_time="2020-01-04T00:00:00Z"
+    )
+    setup_before = (root / "setup.json").read_bytes()
+    before = PaperStore(root / "paper.sqlite").inspect("bip-paper")
+    result = renew_session(root, feed=renewal_feed(renewed), now=renewed.captured_at)
+    profile = json.loads((root / "setup.json").read_text())
+    generation = root / profile["active_session_generation"]
+    event = json.loads((generation / "renewal.json").read_text())
+    assert result["status"] == "SESSION_RENEWED_PAPER_ONLY"
+    assert profile["active_session_generation"].startswith("session-generations/")
+    assert profile["contract_sha256"] == event["contract_fingerprint"]
+    assert profile["session_coverage_end_utc"] == "2020-01-04T00:00:00+00:00"
+    assert event["paper_account_mutated"] is False
+    assert event["halt_reset"] is False
+    assert event["observation_evidence"]["run_id"]
+    assert set(event["before_files"]) == {"setup", "contract", "calendar"}
+    assert all((generation / item["path"]).is_file()
+               for item in event["before_files"].values())
+    assert (generation / "calendar.json").is_file()
+    assert (generation / "contract.json").is_file()
+    assert (generation / "public-metadata.json").is_file()
+    assert PaperStore(root / "paper.sqlite").inspect("bip-paper") == before
+    args = runner_args(root, "run")
+    assert str(generation / "contract.json") == args[args.index("--contract-spec") + 1]
+    assert str(generation / "calendar.json") == args[args.index("--calendar") + 1]
+    assert (root / "setup.json").read_bytes() != setup_before
+
+
+def test_renew_session_refuses_unchanged_session_without_repointing_setup(tmp_path):
+    root, initial = setup_for_renewal(tmp_path)
+    before = (root / "setup.json").read_bytes()
+    with pytest.raises(ValueError, match="PUBLIC_SESSION_UNCHANGED"):
+        renew_session(root, feed=renewal_feed(initial), now=initial.captured_at)
+    assert (root / "setup.json").read_bytes() == before
+    assert not (root / "session-generations").exists()
+
+
+@pytest.mark.parametrize("change,match", [
+    ("closed", "PUBLIC_SESSION_CLOSED"),
+    ("maintenance", "PUBLIC_SESSION_MAINTENANCE"),
+    ("contract", "Contract"),
+    ("coverage", "PUBLIC_CAPTURE_STALE_OR_INCOMPLETE"),
+])
+def test_renew_session_fails_closed_on_invalid_source_without_setup_change(
+    tmp_path, change, match
+):
+    root, initial = setup_for_renewal(tmp_path)
+    changed = copy.deepcopy(initial)
+    changed.product["fcm_trading_session_details"].update(
+        open_time="2020-01-01T00:15:00Z", close_time="2020-01-04T00:00:00Z"
+    )
+    if change == "closed":
+        changed.product["fcm_trading_session_details"]["is_session_open"] = False
+    elif change == "maintenance":
+        changed.product["fcm_trading_session_details"]["maintenance"] = {
+            "start_time": "2020-01-02T00:00:00Z",
+            "end_time": "2020-01-02T00:15:00Z",
+        }
+    elif change == "contract":
+        changed.product["price_increment"] = "10"
+    elif change == "coverage":
+        changed.bars = changed.bars.iloc[1:]
+    before = (root / "setup.json").read_bytes()
+    with pytest.raises(ValueError, match=match):
+        renew_session(root, feed=renewal_feed(changed), now=changed.captured_at)
+    assert (root / "setup.json").read_bytes() == before
+
+
+def test_renewal_crash_before_atomic_setup_pointer_keeps_old_generation_active(tmp_path):
+    root, initial = setup_for_renewal(tmp_path)
+    changed = copy.deepcopy(initial)
+    changed.product["fcm_trading_session_details"].update(
+        open_time="2020-01-01T00:15:00Z", close_time="2020-01-04T00:00:00Z"
+    )
+    before = (root / "setup.json").read_bytes()
+
+    def crash(_generation):
+        raise RuntimeError("simulated crash before pointer commit")
+
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        renew_session(root, feed=renewal_feed(changed), now=changed.captured_at,
+                      before_commit_hook=crash)
+    assert (root / "setup.json").read_bytes() == before
+    assert not json.loads((root / "setup.json").read_text()).get("active_session_generation")
+    # Orphaned generation is immutable evidence, not an active configuration.
+    assert list((root / "session-generations").iterdir())
+
+
+def test_renewal_never_clears_a_persisted_halt(tmp_path):
+    root, initial = setup_for_renewal(tmp_path)
+    paper = PaperStore(root / "paper.sqlite")
+    paper.halt("bip-paper", "operator review required", at_utc="2020-01-02T00:00:00Z")
+    changed = copy.deepcopy(initial)
+    changed.product["fcm_trading_session_details"].update(
+        open_time="2020-01-01T00:15:00Z", close_time="2020-01-04T00:00:00Z"
+    )
+    result = renew_session(root, feed=renewal_feed(changed), now=changed.captured_at)
+    assert result["paper_halted"] is True
+    assert result["halt_reset"] is False
+    assert PaperStore(root / "paper.sqlite").inspect("bip-paper")["halted"] is True
+
+
+def test_renewal_rejects_concurrent_worker_lock_without_setup_mutation(tmp_path):
+    root, initial = setup_for_renewal(tmp_path)
+    changed = copy.deepcopy(initial)
+    changed.product["fcm_trading_session_details"].update(
+        open_time="2020-01-01T00:15:00Z", close_time="2020-01-04T00:00:00Z"
+    )
+    before = (root / "setup.json").read_bytes()
+    with account_lock(root / "paper.sqlite", "bip-paper"):
+        with pytest.raises(WorkerAlreadyRunning):
+            renew_session(root, feed=renewal_feed(changed), now=changed.captured_at)
+    assert (root / "setup.json").read_bytes() == before
+
+
+def test_checkpoint_continuity_refuses_unobserved_gap():
+    bars = pd.DataFrame(
+        {"close": [10, 11]},
+        index=pd.to_datetime(["2026-10-17T19:45:00Z", "2026-10-17T20:00:00Z"]),
+    )
+    dataset = SimpleNamespace(
+        start_utc="2026-10-17T19:45:00Z",
+        end_utc="2026-10-17T20:15:00Z",
+        bars=bars,
+    )
+    state = {"risk_events": [{"data": {
+        "type": "CHECKPOINT", "closed_bar_utc": "2026-10-17T19:45:00Z"
+    }}], "fills": []}
+    assert _checkpoint_continuity(state, dataset) == pd.Timestamp("2026-10-17T19:45:00Z")
+    dataset.start_utc = "2026-10-17T20:00:00Z"
+    with pytest.raises(ValueError, match="UNOBSERVED_CHECKPOINT_GAP"):
+        _checkpoint_continuity(state, dataset)
