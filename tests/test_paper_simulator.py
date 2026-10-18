@@ -2,7 +2,6 @@ from dataclasses import replace
 from decimal import Decimal
 
 import pandas as pd
-
 from test_paper_risk import inputs
 
 from metatr.backtest import BacktestEngine
