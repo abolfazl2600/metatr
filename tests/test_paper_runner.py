@@ -1,7 +1,10 @@
 import json
 from dataclasses import asdict
 from decimal import Decimal
+from types import SimpleNamespace
 from urllib.error import HTTPError
+
+import pandas as pd
 
 import pytest
 from test_backtest import fixture
@@ -12,8 +15,10 @@ from metatr.paper.store import PaperStore
 from metatr.paper_cli import capture_public, main
 
 
-def inputs(tmp_path, count=100):
-    values = tuple(10000 + (i % 7) * 10 for i in range(count))
+def inputs(tmp_path, count=100, values=None):
+    values = tuple(values) if values is not None else tuple(
+        10000 + (i % 7) * 10 for i in range(count)
+    )
     dataset, spec, contract, costs, _ = fixture(tmp_path, values)
     paper = PaperStore(tmp_path / "paper.sqlite")
     paper.initialize("test", dataset.market, "1000", at_utc=dataset.start_utc)
@@ -216,3 +221,58 @@ def test_disk_full_catchup_limit_and_retirement_stop(tmp_path):
             PaperRunner(other, "test").process(d, bad_spec, c, fee, p, "2", max_catch_up_bars=limit)
         assert other.inspect("test")["halted"]
         assert not other.inspect("test")["fills"]
+
+
+def test_public_catchup_uses_bar_clock_after_fresh_current_capture(tmp_path, monkeypatch):
+    paper, dataset, spec, contract, costs, policy = inputs(
+        tmp_path, 12, values=(10000,) * 12
+    )
+    checkpoint_at = dataset.bars.index[3]
+    paper.append(
+        "test",
+        "RISK_EVENT",
+        ["CHECKPOINT", checkpoint_at.isoformat()],
+        {
+            "type": "CHECKPOINT",
+            "closed_bar_utc": checkpoint_at.isoformat(),
+            "data_sha256": dataset.data_sha256,
+        },
+        checkpoint_at,
+    )
+    now = (pd.Timestamp(dataset.end_utc) + pd.Timedelta(minutes=5)).isoformat()
+    calls = []
+
+    def fake_evaluate(intent, state, market_state, risk_policy, contract_spec, at_utc,
+                      **kwargs):
+        at = pd.Timestamp(at_utc)
+        calls.append((market_state.mode, at, market_state.dataset.end_utc))
+        return SimpleNamespace(
+            action="APPROVE",
+            reasons=(),
+            to_dict=lambda: {
+                "action": "APPROVE",
+                "reasons": [],
+                "timestamp": at.isoformat(),
+                "data_sha256": market_state.dataset.data_sha256,
+            },
+        )
+
+    monkeypatch.setattr("metatr.paper.runner.evaluate", fake_evaluate)
+    result = PaperRunner(paper, "test").process(
+        dataset, spec, contract, costs, policy, "2", mode="PUBLIC", now_utc=now,
+    )
+
+    assert not result["halted"]
+    assert result["processed_bars"] == len(dataset.bars) - 3
+    assert result["last_committed_candle_close_utc"] == dataset.end_utc
+    assert result["stale_age_seconds"] == 300
+    # One full-dataset real-clock gate, then historical prefixes at their own
+    # event times, with only the most recent bars checked against the public clock.
+    assert calls[0][0] == "PUBLIC"
+    assert calls[0][1] == pd.Timestamp(now)
+    per_bar = calls[1:]
+    assert [mode for mode, _, _ in per_bar] == [
+        "REPLAY", "REPLAY", "REPLAY", "REPLAY", "REPLAY", "REPLAY", "REPLAY",
+        "PUBLIC", "PUBLIC",
+    ]
+    assert all(at == pd.Timestamp(end) for mode, at, end in per_bar[:7])
