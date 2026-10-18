@@ -254,3 +254,64 @@ workflow with the complete pinned files and a fresh, covered data range. The
 first public restart does not synthesize unknown historical fills. If the
 session has ended, leave the account safely stopped until independently sourced
 renewal is supported; don't rewrite JSON calendar files by hand.
+
+
+## Explicit Coinbase session renewal (Issue #44)
+
+The initial setup is intentionally pinned to the single public session returned
+by Coinbase. A stale `source_received_utc` does **not** mean an API key is missing:
+public product/candle endpoints need no trading credentials. Stop the foreground
+worker with Ctrl+C; do not edit `calendar.json` or `contract.json` by hand.
+
+```bash
+WORKSPACE="$HOME/metatr-state/paper-bip"
+python3 -m metatr.paper_setup --workspace "$WORKSPACE" --status
+python3 -m metatr.paper_setup --workspace "$WORKSPACE" --report
+python3 -m metatr.paper_observe --workspace "$WORKSPACE"
+python3 -m metatr.paper_setup --workspace "$WORKSPACE" --renew-session
+```
+
+Renewal fetches the exact BIP-20DEC30-CDE futures product and 80 public M15 bars.
+It requires an API-confirmed OPEN session, unchanged structural contract metadata,
+UTC M15 boundaries, complete/fresh in-session bars, a reconciled Paper journal,
+unchanged model/risk pins, no unresolved orders, an acceptable current position,
+and continuous candle coverage from the last committed checkpoint. It never
+guesses future sessions or fabricates bars/fills to bridge a gap.
+
+The new `contract.json` and `calendar.json` are written together into an
+immutable `session-generations/<id>/` directory. Before-images of the prior
+`setup.json`, effective contract and calendar are preserved by raw SHA-256.
+The generation also contains `renewal-<sha256>.json`, public metadata, and a link to the
+independent Issue #43 observation evidence. Root `setup.json` is the single
+atomic commit pointer; a staged/orphan generation is not active until that
+pointer references it. Runner arguments verify the active files' hashes.
+Renewal updates market-data cache and evidence only; it does not change Paper
+balances, fills, intents, risk policy, journal, or HALT state.
+
+If the result has `paper_halted: false`, review the renewal event and restart:
+
+```bash
+python3 -m metatr.paper_setup --workspace "$WORKSPACE" --start --confirm-paper --display-output-dir "$HOME/Library/Application Support/net.metaquotes.wine.metatrader5/drive_c/users/user/AppData/Roaming/MetaQuotes/Terminal/Common/Files"
+```
+
+If `paper_halted: true`, renewal deliberately leaves the kill switch latched.
+After reviewing the outage and renewal evidence, use the separate explicit reset.
+It fetches fresh public data, checks that the active session still matches the
+generation, validates checkpoint continuity and risk, and requires a written
+reason of at least eight characters:
+
+```bash
+python3 -m metatr.paper_setup --workspace "$WORKSPACE" --reset-halt --reason "Reviewed outage and verified current session and Paper risk health"
+```
+
+Start the worker only after reset succeeds. If renewal reports
+`PUBLIC_SESSION_UNCHANGED`, `PUBLIC_SESSION_CLOSED`, `PUBLIC_DATA_NOT_READY`,
+`UNOBSERVED_CHECKPOINT_GAP`, a risk-gate failure, unknown order state or a
+contract pin mismatch, do not bypass the check. Leave the account stopped and
+review the evidence and logs. A failed renewal neither resets HALT nor changes
+the active setup pointer.
+
+This is a real public API smoke check, not an offline fixture. It uses no API key
+or private endpoint. CI verifies offline safety gates; the current-session
+response and multi-day continuity still require operator observation. It does
+not establish 14-day acceptance or profitability.
