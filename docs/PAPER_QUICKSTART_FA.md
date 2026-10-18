@@ -220,8 +220,13 @@ python3 -m metatr.paper_setup --workspace "$WORKSPACE" --start --confirm-paper -
 python3 -m metatr.paper_setup --workspace "$WORKSPACE" --reset-halt --reason "Reviewed outage and verified current session and Paper risk health"
 ```
 
-فقط بعد از موفقیت reset، worker را شروع کن. اگر خطاهایی مثل
-`PUBLIC_SESSION_UNCHANGED`، `PUBLIC_SESSION_CLOSED`، `PUBLIC_DATA_NOT_READY`,
+اگر مرزهای جلسه تغییر نکرده باشند، اما Coinbase همچنان بازبودن همان جلسه را
+تأیید کند، تمدید می‌تواند کندل‌ها را در همان جلسه تازه‌سازی کند. گزارش تمدید
+وضعیت `UNCHANGED_SESSION_REFRESH` یا `NEW_SESSION_VERSION` را ثبت می‌کند.
+با این حال، تازگی و کامل‌بودن کندل‌ها، پیوستگی checkpoint، ریسک و مشخصات قرارداد
+همچنان باید تأیید شوند؛ ثابت‌ماندن مشخصات جلسه هرگز مجوز پذیرش کندل کهنه نیست.
+
+اگر خطاهایی مثل `PUBLIC_SESSION_CLOSED`، `PUBLIC_DATA_NOT_READY`,
 `UNOBSERVED_CHECKPOINT_GAP`، خطای سلامت ریسک، وضعیت سفارش ناشناخته یا ناسازگاری
 قرارداد دیدی، کنترل ایمنی را دور نزن. حساب را متوقف نگه دار و شواهد و لاگ‌ها را
 بررسی کن. شکست تمدید نه HALT را پاک می‌کند و نه اشاره‌گر پیکربندی فعال را عوض
