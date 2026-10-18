@@ -24,7 +24,7 @@ from metatr.exchanges.coinbase_futures import CoinbaseFuturesFeed
 from metatr.futures_store import FuturesSQLiteStore
 from metatr.model_registry import StrategyRegistry, StrategySpec
 from metatr.paper.risk import PaperMarketState, PaperRiskPolicy, evaluate
-from metatr.paper.runner import WorkerAlreadyRunning, account_lock, checkpoint
+from metatr.paper.runner import account_lock, checkpoint
 from metatr.paper.store import PaperStore
 from metatr.paper_cli import main as paper_main
 from metatr.research import canonical, digest, parse_market
