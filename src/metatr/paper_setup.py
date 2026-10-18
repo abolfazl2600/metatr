@@ -567,7 +567,10 @@ def renew_session(workspace, *, feed=None, now=None, before_commit_hook=None):
                 "halt_reset": False,
                 "real_execution_available": False,
             }
-            event_sha = _write_immutable_json(stage / "renewal.json", event)
+            event_raw = (canonical(event) + "\n").encode("utf-8")
+            event_sha = _file_sha256(event_raw)
+            event_name = f"renewal-{event_sha}.json"
+            _durable_write(stage / event_name, event_raw, exclusive=True)
             _fsync_directory(before)
             _fsync_directory(after)
             _fsync_directory(stage)
@@ -594,7 +597,7 @@ def renew_session(workspace, *, feed=None, now=None, before_commit_hook=None):
                 "halt_reset": False,
                 "paper_account_mutated": False,
                 "real_execution_available": False,
-                "renewal_event": str(final_dir / "renewal.json"),
+                "renewal_event": str(final_dir / event_name),
                 "renewal_event_sha256": event_sha,
                 "after_setup_sha256": new_setup_sha,
             }
