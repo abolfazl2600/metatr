@@ -1,5 +1,5 @@
 //@version=6
-// @strategy_alert_message {{strategy.order.alert_message}}
+//@strategy_alert_message {{strategy.order.alert_message}}
 
 // BTC Futures Bot v1.4 — Pine Script v6
 // Standalone TradingView research strategy. No broker API or live order placement.
