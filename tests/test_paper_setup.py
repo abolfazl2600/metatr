@@ -220,7 +220,7 @@ def test_renew_session_refuses_unchanged_session_without_repointing_setup(tmp_pa
 @pytest.mark.parametrize("change,match", [
     ("closed", "PUBLIC_SESSION_CLOSED"),
     ("maintenance", "PUBLIC_SESSION_MAINTENANCE"),
-    ("contract", "Contract"),
+    ("contract", "contract specification"),
     ("coverage", "PUBLIC_CAPTURE_STALE_OR_INCOMPLETE"),
 ])
 def test_renew_session_fails_closed_on_invalid_source_without_setup_change(
