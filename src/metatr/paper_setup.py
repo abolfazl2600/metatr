@@ -17,7 +17,10 @@ import pandas as pd
 
 from metatr.calendars import SessionCalendar, stamp
 from metatr.contract_economics import (
-    ContractSpec, CostScenario, decimal, native_contract_fingerprint,
+    ContractSpec,
+    CostScenario,
+    decimal,
+    native_contract_fingerprint,
 )
 from metatr.dataset_quality import validate_dataset
 from metatr.exchanges.coinbase_futures import CoinbaseFuturesFeed
@@ -732,14 +735,17 @@ def main(argv=None):
         if args.display_output_dir and not args.start:
             raise ValueError("--display-output-dir requires --start")
         if args.renew_session:
-            if args.confirm_paper or args.max_cycles is not None or args.display_output_dir or args.reason:
+            if (args.confirm_paper or args.max_cycles is not None
+                    or args.display_output_dir or args.reason):
                 raise ValueError("--renew-session cannot be combined with start/reset options")
             print(canonical(renew_session(args.workspace)), flush=True)
             return 0
         if args.reset_halt:
             if (not args.reason or args.confirm_paper or args.max_cycles is not None
                     or args.display_output_dir):
-                raise ValueError("--reset-halt requires --reason and cannot be combined with start options")
+                raise ValueError(
+                    "--reset-halt requires --reason and cannot be combined with start options"
+                )
             return reset_halt(args.workspace, args.reason)
         if args.reason:
             raise ValueError("--reason is only valid with --reset-halt")
