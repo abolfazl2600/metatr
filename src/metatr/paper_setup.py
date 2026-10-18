@@ -16,7 +16,9 @@ from urllib.error import HTTPError, URLError
 import pandas as pd
 
 from metatr.calendars import SessionCalendar, stamp
-from metatr.contract_economics import ContractSpec, CostScenario, native_contract_fingerprint
+from metatr.contract_economics import (
+    ContractSpec, CostScenario, decimal, native_contract_fingerprint,
+)
 from metatr.dataset_quality import validate_dataset
 from metatr.exchanges.coinbase_futures import CoinbaseFuturesFeed
 from metatr.futures_store import FuturesSQLiteStore
@@ -588,7 +590,13 @@ def runner_args(workspace, command, *, max_cycles=None, display_output_dir=None)
                  "--observation-workspace", str(workspace)]
         for flag, name in (("contract-spec", "contract"), ("cost-scenario", "costs"),
                            ("calendar", "calendar"), ("risk-policy", "risk")):
-            args += [f"--{flag}", str(workspace / f"{name}.json")]
+            config_path = (
+                _active_config_path(workspace, profile, name)
+                if name in ("contract", "calendar")
+                else workspace / f"{name}.json"
+            )
+            _read_regular(config_path)
+            args += [f"--{flag}", str(config_path)]
         if max_cycles is not None:
             args += ["--max-cycles", str(max_cycles)]
         if display_output_dir:
@@ -606,6 +614,8 @@ def main(argv=None):
                       help="Prepare if absent, then poll in foreground")
     mode.add_argument("--status", action="store_true")
     mode.add_argument("--report", action="store_true")
+    mode.add_argument("--renew-session", action="store_true",
+                      help="Renew only the explicitly confirmed public Coinbase session")
     parser.add_argument("--confirm-paper", action="store_true")
     parser.add_argument("--max-cycles", type=int)
     parser.add_argument("--display-output-dir", type=Path)
@@ -617,6 +627,11 @@ def main(argv=None):
             raise ValueError("--max-cycles requires --start and a positive bound")
         if args.display_output_dir and not args.start:
             raise ValueError("--display-output-dir requires --start")
+        if args.renew_session:
+            if args.confirm_paper or args.max_cycles is not None or args.display_output_dir:
+                raise ValueError("--renew-session cannot be combined with start-only options")
+            print(canonical(renew_session(args.workspace)), flush=True)
+            return 0
         if args.status or args.report:
             return paper_main(runner_args(args.workspace, "report" if args.report else "status"))
         if not args.workspace.expanduser().exists():
