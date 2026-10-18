@@ -496,8 +496,26 @@ def renew_session(workspace, *, feed=None, now=None, before_commit_hook=None):
                 before_hashes[name] = {"sha256": sha, "path": f"before/{target.name}"}
             contract_sha = _file_sha256(new_contract_raw)
             calendar_sha = _file_sha256(new_calendar_raw)
+            updated = dict(profile)
+            updated.update({
+                "active_session_generation": f"session-generations/{generation_id}",
+                "active_session_contract_file_sha256": contract_sha,
+                "active_session_calendar_file_sha256": calendar_sha,
+                "session_renewed_utc": current_time.isoformat(),
+                "session_coverage_start_utc": opened.isoformat(),
+                "session_coverage_end_utc": closed.isoformat(),
+                "contract_sha256": contract.fingerprint,
+                "calendar_sha256": calendar_sha,
+                "last_session_renewal_id": generation_id,
+            })
+            new_setup_raw = (canonical(updated) + "\n").encode("utf-8")
+            new_setup_sha = _file_sha256(new_setup_raw)
             _durable_write(stage / "contract.json", new_contract_raw, exclusive=True)
             _durable_write(stage / "calendar.json", new_calendar_raw, exclusive=True)
+            after = stage / "after"
+            after.mkdir(mode=0o700)
+            after_setup_path = after / f"setup-{new_setup_sha}.json"
+            _durable_write(after_setup_path, new_setup_raw, exclusive=True)
             metadata_raw = (canonical(capture.product) + "\n").encode("utf-8")
             _durable_write(stage / "public-metadata.json", metadata_raw, exclusive=True)
             event = {
@@ -523,6 +541,8 @@ def renew_session(workspace, *, feed=None, now=None, before_commit_hook=None):
                     "contract_sha256": contract_sha,
                     "calendar_sha256": calendar_sha,
                     "metadata_sha256": _file_sha256(metadata_raw),
+                    "setup_sha256": new_setup_sha,
+                    "setup_path": f"after/{after_setup_path.name}",
                 },
                 "data_sha256": dataset.data_sha256,
                 "dataset_report_sha256": json.loads(dataset.validation_json)["report_sha256"],
@@ -549,6 +569,7 @@ def renew_session(workspace, *, feed=None, now=None, before_commit_hook=None):
             }
             event_sha = _write_immutable_json(stage / "renewal.json", event)
             _fsync_directory(before)
+            _fsync_directory(after)
             _fsync_directory(stage)
             os.rename(stage, final_dir)
             _fsync_directory(generations)
@@ -556,26 +577,11 @@ def renew_session(workspace, *, feed=None, now=None, before_commit_hook=None):
                 before_commit_hook(final_dir)
 
             # setup.json is the single atomic commit pointer. The generation contains
-            # both matching contract/calendar files and all old-file evidence already.
+            # matching configs plus raw before/after setup evidence before this commit.
             if _read_regular(setup_path) != original_setup:
                 raise ValueError("PAPER_SETUP_CHANGED_DURING_RENEWAL")
-            updated = dict(profile)
-            updated.update({
-                "active_session_generation": f"session-generations/{generation_id}",
-                "active_session_contract_file_sha256": contract_sha,
-                "active_session_calendar_file_sha256": calendar_sha,
-                "session_renewal_event_sha256": event_sha,
-                "session_renewed_utc": current_time.isoformat(),
-                "session_coverage_start_utc": opened.isoformat(),
-                "session_coverage_end_utc": closed.isoformat(),
-                "contract_sha256": contract.fingerprint,
-                "calendar_sha256": calendar_sha,
-                "last_session_renewal_id": generation_id,
-            })
             setup_temp = workspace / f".setup-renewal-{generation_id}.tmp"
-            _durable_write(
-                setup_temp, (canonical(updated) + "\n").encode("utf-8"), exclusive=True,
-            )
+            _durable_write(setup_temp, new_setup_raw, exclusive=True)
             os.replace(setup_temp, setup_path)
             _fsync_directory(workspace)
             return {
