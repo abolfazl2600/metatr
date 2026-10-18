@@ -177,52 +177,52 @@ curl -4 --connect-timeout 10 --max-time 20 -sS -o /dev/null \\
 ## تمدید صریح جلسهٔ Coinbase پس از کهنه‌شدن داده‌ها
 
 پروفایل اولیه عمداً فقط به همان جلسه‌ای متصل است که API عمومی Coinbase در زمان
-راه‌اندازی تأیید کرده است. کهنه‌شدن \`source_received_utc\` به معنی کمبود API Key
+راه‌اندازی تأیید کرده است. کهنه‌شدن `source_received_utc` به معنی کمبود API Key
 نیست؛ دریافت محصول و کندل‌های عمومی به کلید معاملاتی نیاز ندارد. worker را با
-\`Control+C\` متوقف کن و فایل‌های \`calendar.json\` و \`contract.json\` را دستی
+`Control+C` متوقف کن و فایل‌های `calendar.json` و `contract.json` را دستی
 ویرایش نکن.
 
-\`\`\`bash
+```bash
 WORKSPACE="$HOME/metatr-state/paper-bip"
 python3 -m metatr.paper_setup --workspace "$WORKSPACE" --status
 python3 -m metatr.paper_setup --workspace "$WORKSPACE" --report
 python3 -m metatr.paper_observe --workspace "$WORKSPACE"
 python3 -m metatr.paper_setup --workspace "$WORKSPACE" --renew-session
-\`\`\`
+```
 
-تمدید، محصول دقیق قرارداد آتی \`BIP-20DEC30-CDE\` و ۸۰ کندل عمومی M15 را دوباره
+تمدید، محصول دقیق قرارداد آتی `BIP-20DEC30-CDE` و ۸۰ کندل عمومی M15 را دوباره
 دریافت می‌کند. جلسه باید طبق API باز باشد؛ مشخصات ساختاری قرارداد نباید تغییر
 کرده باشد؛ مرزهای UTC باید با M15 هم‌تراز باشند؛ داده کامل و تازه، دفتر Paper
 قابل تطبیق، مدل و سیاست ریسک ثابت، سفارش معلق صفر و موقعیت فعلی در محدوده ریسک
 باشد؛ همچنین کندل‌ها باید از آخرین checkpoint بدون شکاف پیوسته باشند. سیستم
 جلسات آینده را حدس نمی‌زند و برای پرکردن شکاف، کندل یا fill ساختگی تولید نمی‌کند.
 
-قرارداد و تقویم جدید با هم در پوشه تغییرناپذیر \`session-generations/<id>/\`
-ذخیره می‌شوند. نسخه قبلی \`setup.json\`، قرارداد مؤثر و تقویم با SHA-256 حفظ
-می‌شوند. فایل \`renewal.json\` شامل منشأ داده و ارجاع به شواهد مشاهده مستقل
-Issue #43 است. فایل ریشه \`setup.json\` تنها اشاره‌گر commit اتمیک است؛ نسل
+قرارداد و تقویم جدید با هم در پوشه تغییرناپذیر `session-generations/<id>/`
+ذخیره می‌شوند. نسخه قبلی `setup.json`، قرارداد مؤثر و تقویم با SHA-256 حفظ
+می‌شوند. فایل `renewal.json` شامل منشأ داده و ارجاع به شواهد مشاهده مستقل
+Issue #43 است. فایل ریشه `setup.json` تنها اشاره‌گر commit اتمیک است؛ نسل
 آماده‌شده تا وقتی این اشاره‌گر به آن نرسد فعال نیست. تمدید فقط cache داده و
 شواهد را می‌نویسد و موجودی، fill، سفارش، سیاست ریسک، ژورنال یا HALT را تغییر
 نمی‌دهد.
 
-اگر خروجی \`paper_halted: false\` بود، رخداد تمدید را بررسی و worker را اجرا کن:
+اگر خروجی `paper_halted: false` بود، رخداد تمدید را بررسی و worker را اجرا کن:
 
-\`\`\`bash
+```bash
 python3 -m metatr.paper_setup --workspace "$WORKSPACE" --start --confirm-paper --display-output-dir "$HOME/Library/Application Support/net.metaquotes.wine.metatrader5/drive_c/users/user/AppData/Roaming/MetaQuotes/Terminal/Common/Files"
-\`\`\`
+```
 
-اگر \`paper_halted: true\` بود، تمدید عمداً HALT را پاک نمی‌کند. پس از بررسی
+اگر `paper_halted: true` بود، تمدید عمداً HALT را پاک نمی‌کند. پس از بررسی
 علت توقف و شواهد تمدید، فرمان جداگانه زیر را اجرا کن. این فرمان داده عمومی تازه،
 هم‌خوانی جلسه، پیوستگی checkpoint و سلامت ریسک را بررسی می‌کند و دلیل ثبت‌شده
 با حداقل ۸ کاراکتر می‌خواهد:
 
-\`\`\`bash
+```bash
 python3 -m metatr.paper_setup --workspace "$WORKSPACE" --reset-halt --reason "Reviewed outage and verified current session and Paper risk health"
-\`\`\`
+```
 
 فقط بعد از موفقیت reset، worker را شروع کن. اگر خطاهایی مثل
-\`PUBLIC_SESSION_UNCHANGED\`، \`PUBLIC_SESSION_CLOSED\`، \`PUBLIC_DATA_NOT_READY\`,
-\`UNOBSERVED_CHECKPOINT_GAP\`، خطای سلامت ریسک، وضعیت سفارش ناشناخته یا ناسازگاری
+`PUBLIC_SESSION_UNCHANGED`، `PUBLIC_SESSION_CLOSED`، `PUBLIC_DATA_NOT_READY`,
+`UNOBSERVED_CHECKPOINT_GAP`، خطای سلامت ریسک، وضعیت سفارش ناشناخته یا ناسازگاری
 قرارداد دیدی، کنترل ایمنی را دور نزن. حساب را متوقف نگه دار و شواهد و لاگ‌ها را
 بررسی کن. شکست تمدید نه HALT را پاک می‌کند و نه اشاره‌گر پیکربندی فعال را عوض
 می‌کند.
