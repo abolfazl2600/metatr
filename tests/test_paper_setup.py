@@ -1,4 +1,5 @@
 import copy
+import json
 from dataclasses import replace
 from types import SimpleNamespace
 from urllib.error import HTTPError, URLError
@@ -11,8 +12,13 @@ from metatr.display_fixture import fixture_dataset
 from metatr.paper.runner import WorkerAlreadyRunning, account_lock
 from metatr.paper.store import PaperStore
 from metatr.paper_setup import (
-    MARKET, _capture_with_retry, _checkpoint_continuity, main, prepare,
-    renew_session, runner_args,
+    MARKET,
+    _capture_with_retry,
+    _checkpoint_continuity,
+    main,
+    prepare,
+    renew_session,
+    runner_args,
 )
 
 
