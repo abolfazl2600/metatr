@@ -18,6 +18,7 @@ from metatr.paper_setup import (
     main,
     prepare,
     renew_session,
+    reset_halt,
     runner_args,
 )
 
@@ -318,3 +319,24 @@ def test_checkpoint_continuity_refuses_unobserved_gap():
     dataset.start_utc = "2026-10-17T20:00:00Z"
     with pytest.raises(ValueError, match="UNOBSERVED_CHECKPOINT_GAP"):
         _checkpoint_continuity(state, dataset)
+
+
+
+def test_explicit_reset_halt_requires_reason_and_fresh_same_session_health(tmp_path):
+    root, initial = setup_for_renewal(tmp_path)
+    paper = PaperStore(root / "paper.sqlite")
+    paper.halt("bip-paper", "operator review required", at_utc="2020-01-02T00:00:00Z")
+    changed = copy.deepcopy(initial)
+    changed.product["fcm_trading_session_details"].update(
+        open_time="2020-01-01T00:15:00Z", close_time="2020-01-04T00:00:00Z"
+    )
+    renew_session(root, feed=renewal_feed(changed), now=changed.captured_at)
+    with pytest.raises(ValueError, match="at least 8 characters"):
+        reset_halt(root, "review", feed=renewal_feed(changed), now=changed.captured_at)
+    result = reset_halt(
+        root, "Reviewed outage and verified fresh session health",
+        feed=renewal_feed(changed), now=changed.captured_at,
+    )
+    assert result["status"] == "PAPER_HALT_RESET_AFTER_FRESH_HEALTH_GATE"
+    assert result["paper_halted"] is False
+    assert bool(PaperStore(root / "paper.sqlite").inspect("bip-paper")["halted"]) is False
