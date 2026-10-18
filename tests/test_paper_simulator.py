@@ -1,6 +1,8 @@
 from dataclasses import replace
 from decimal import Decimal
 
+import pandas as pd
+
 from test_paper_risk import inputs
 
 from metatr.backtest import BacktestEngine
@@ -71,3 +73,19 @@ def test_source_outage_latches_halt_and_expires_pending(tmp_path):
     assert store.inspect("test")["halted"]
     assert not store.inspect("test")["fills"]
     assert store.reconcile("test")
+
+
+
+def test_accepted_intent_past_expiry_cannot_fill_during_catchup(tmp_path):
+    store, key, _, _, health, policy, contract, now = inputs(tmp_path)
+    simulator = PaperExecutionSimulator(store)
+    assert simulator.approve("test", key, health, policy, contract, now) == "ACCEPTED"
+    expired_clock = (pd.Timestamp(now) + pd.Timedelta(hours=1)).isoformat()
+
+    assert simulator.process_next_bar(
+        "test", key, health, policy, contract, expired_clock
+    ) is None
+    order = store.inspect("test")["orders"][0]
+    assert order["status"] == "EXPIRED"
+    assert order["reason"] == "INTENT_EXPIRED"
+    assert not store.inspect("test")["fills"]
