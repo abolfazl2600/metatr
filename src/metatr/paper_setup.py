@@ -283,6 +283,33 @@ def _write_immutable_json(path, value):
     return _file_sha256(content)
 
 
+
+def _verify_account_limits(state, policy, contract, dataset):
+    """Refuse renewal/reset if persisted orders or exposure violate current pins."""
+    statuses = {order["status"] for order in state["orders"]}
+    if not statuses <= {"NEW", "ACCEPTED", "REJECTED", "CANCELLED", "EXPIRED"}:
+        raise ValueError("PAPER_ORDER_STATE_UNKNOWN")
+    if any(order["status"] in ("NEW", "ACCEPTED") for order in state["orders"]):
+        raise ValueError("PAPER_PENDING_ORDER_REQUIRES_OPERATOR_REVIEW")
+    quantity = abs(decimal(state["ledger"]["contracts"]))
+    if quantity > decimal(policy.max_open_contracts):
+        raise ValueError("PAPER_POSITION_EXCEEDS_RISK_POLICY")
+    price = decimal(str(dataset.bars.iloc[-1].close))
+    notional = quantity * decimal(contract.multiplier) * price
+    last_equity = (
+        decimal(state["marks"][-1]["data"]["equity"])
+        if state["marks"] else decimal(state["initial_equity"])
+    )
+    limits = (
+        decimal(policy.max_position_notional),
+        decimal(policy.max_gross_exposure),
+        decimal(policy.max_net_exposure),
+        last_equity * decimal(policy.max_leverage),
+    )
+    if notional > min(limits):
+        raise ValueError("PAPER_POSITION_NOTIONAL_EXCEEDS_RISK_POLICY")
+
+
 def _checkpoint_continuity(state, dataset):
     """Renewal must not turn missing history into catch-up fills."""
     last = checkpoint(state)
@@ -366,14 +393,6 @@ def renew_session(workspace, *, feed=None, now=None, before_commit_hook=None):
                     or pins.get("risk_policy_sha256") != policy.fingerprint):
                 raise ValueError("PAPER_MODEL_OR_RISK_PIN_MISMATCH")
 
-        statuses = {order["status"] for order in state["orders"]}
-        if not statuses <= {"NEW", "ACCEPTED", "REJECTED", "CANCELLED", "EXPIRED"}:
-            raise ValueError("PAPER_ORDER_STATE_UNKNOWN")
-        if any(order["status"] in ("NEW", "ACCEPTED") for order in state["orders"]):
-            raise ValueError("PAPER_PENDING_ORDER_REQUIRES_OPERATOR_REVIEW")
-        if abs(decimal(state["ledger"]["contracts"])) > decimal(policy.max_open_contracts):
-            raise ValueError("PAPER_POSITION_EXCEEDS_RISK_POLICY")
-
         capture = _capture_with_retry(feed, now=current_time.to_pydatetime())
         captured_at = stamp(capture.captured_at)
         end = capture.bars.index[-1] + pd.Timedelta(minutes=15)
@@ -405,6 +424,7 @@ def renew_session(workspace, *, feed=None, now=None, before_commit_hook=None):
         if not quality.ready:
             raise ValueError(f"PUBLIC_DATA_NOT_READY:{quality.issues}")
         last_checkpoint = _checkpoint_continuity(state, dataset)
+        _verify_account_limits(state, policy, contract, dataset)
 
         # A pure health gate checks fresh public bars and existing account risk without
         # clearing a persisted HALT. Pending intents/fills are never edited here.
@@ -635,6 +655,7 @@ def reset_halt(workspace, reason, *, feed=None, now=None):
     if not state["halted"]:
         raise ValueError("Account is not halted")
     _checkpoint_continuity(state, dataset)
+    _verify_account_limits(state, policy, contract, dataset)
     return paper_main(runner_args(
         workspace, "reset-halt", reason=reason, start_utc=dataset.start_utc,
         end_utc=dataset.end_utc, asof_utc=dataset.asof_utc,
