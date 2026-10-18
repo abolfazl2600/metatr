@@ -1,0 +1,352 @@
+//@version=6
+// @strategy_alert_message {{strategy.order.alert_message}}
+
+// BTC Futures Bot v1.4 — Pine Script v6
+// Standalone TradingView research strategy. No broker API or live order placement.
+// IMPORTANT: M15 standard chart, linear USD/USDT-quoted contracts only.
+strategy("BTC Futures Bot | FA | v1.4",
+     overlay = true,
+     initial_capital = 100,
+     currency = currency.USD,
+     pyramiding = 0,
+     margin_long = 10,
+     margin_short = 10,
+     commission_type = strategy.commission.percent,
+     commission_value = 0.05,
+     slippage = 2,
+     calc_on_every_tick = false,
+     calc_on_order_fills = false,
+     max_bars_back = 3000)
+
+// ─────────────────────────────────────────────────────────────────────
+// 1. General — Persian inputs
+// ─────────────────────────────────────────────────────────────────────
+gMain = "۱. استراتژی و جهت معاملات"
+model = input.string("تقاطع EMA", "مدل سیگنال ۱۵ دقیقه",
+     options = ["تقاطع EMA", "شکست کانال دانچیان"], group = gMain)
+allowLong = input.bool(true, "اجازه معاملات لانگ", group = gMain)
+allowShort = input.bool(true, "اجازه معاملات شورت", group = gMain)
+exitOpposite = input.bool(true, "خروج پس از بسته‌شدن کندل مخالف ۱۵ دقیقه‌ای",
+     tooltip = "لانگ: اگر Close < Open باشد خروج. شورت: اگر Close > Open باشد خروج. دوجی باعث خروج نمی‌شود.",
+     group = gMain)
+
+// ─────────────────────────────────────────────────────────────────────
+// 2. Capital, leverage and % exits
+// ─────────────────────────────────────────────────────────────────────
+gRisk = "۲. سرمایه، اهرم و خروج"
+capitalPct = input.float(95.0, "درصد سرمایه در هر معامله",
+     minval = 1, maxval = 95, step = 1, group = gRisk)
+longLev = input.float(4.0, "اهرم لانگ", minval = 1, maxval = 10,
+     step = 1, group = gRisk)
+shortLev = input.float(1.0, "اهرم شورت", minval = 1, maxval = 10,
+     step = 1, group = gRisk)
+tpPct = input.float(1.0, "حد سود قیمتی (%)", minval = 0.1,
+     maxval = 30, step = 0.1, group = gRisk)
+slPct = input.float(1.0, "حد ضرر قیمتی (%)", minval = 0.1,
+     maxval = 30, step = 0.1, group = gRisk)
+
+// ─────────────────────────────────────────────────────────────────────
+// 3. Confirmed daily + weekly regime, no unfinished higher-TF candles
+// ─────────────────────────────────────────────────────────────────────
+gTrend = "۳. تشخیص روند روزانه و هفتگی"
+dayFastLen = input.int(20, "EMA سریع روزانه", minval = 1, group = gTrend)
+daySlowLen = input.int(50, "EMA کند روزانه", minval = 2, group = gTrend)
+weekFastLen = input.int(10, "EMA سریع هفتگی", minval = 1, group = gTrend)
+weekSlowLen = input.int(30, "EMA کند هفتگی", minval = 2, group = gTrend)
+
+[dClose, dFast, dSlow] = request.security(
+     syminfo.tickerid, "D",
+     [close[1], ta.ema(close, dayFastLen)[1], ta.ema(close, daySlowLen)[1]],
+     lookahead = barmerge.lookahead_on)
+[wClose, wFast, wSlow] = request.security(
+     syminfo.tickerid, "W",
+     [close[1], ta.ema(close, weekFastLen)[1], ta.ema(close, weekSlowLen)[1]],
+     lookahead = barmerge.lookahead_on)
+
+dailyBull = not na(dClose) and not na(dSlow) and dClose > dFast and dFast > dSlow
+dailyBear = not na(dClose) and not na(dSlow) and dClose < dFast and dFast < dSlow
+weeklyBull = not na(wClose) and not na(wSlow) and wClose > wFast and wFast > wSlow
+weeklyBear = not na(wClose) and not na(wSlow) and wClose < wFast and wFast < wSlow
+
+longAllowed = allowLong and dailyBull and weeklyBull
+shortAllowed = allowShort and dailyBear and weeklyBear
+
+// ─────────────────────────────────────────────────────────────────────
+// 4. M15 entry strategies
+// ─────────────────────────────────────────────────────────────────────
+gSignal = "۴. سیگنال ورود ۱۵ دقیقه"
+fastLen = input.int(21, "EMA سریع", minval = 1, group = gSignal)
+slowLen = input.int(55, "EMA کند", minval = 2, group = gSignal)
+rsiLen = input.int(14, "دوره RSI", minval = 2, group = gSignal)
+rsiLongMin = input.float(52, "حداقل RSI برای لانگ",
+     minval = 0, maxval = 100, group = gSignal)
+rsiShortMax = input.float(48, "حداکثر RSI برای شورت",
+     minval = 0, maxval = 100, group = gSignal)
+breakoutLen = input.int(20, "دوره کانال دانچیان",
+     minval = 2, group = gSignal)
+
+emaFast = ta.ema(close, fastLen)
+emaSlow = ta.ema(close, slowLen)
+rsiValue = ta.rsi(close, rsiLen)
+upper = ta.highest(high, breakoutLen)[1]
+lower = ta.lowest(low, breakoutLen)[1]
+emaLong = ta.crossover(emaFast, emaSlow)
+emaShort = ta.crossunder(emaFast, emaSlow)
+breakLong = ta.crossover(close, upper) and emaFast > emaSlow
+breakShort = ta.crossunder(close, lower) and emaFast < emaSlow
+useEma = model == "تقاطع EMA"
+rawLong = useEma ? emaLong : breakLong
+rawShort = useEma ? emaShort : breakShort
+
+// ─────────────────────────────────────────────────────────────────────
+// 5. Volume spike: reject abnormal entry candle, not existing positions
+// ─────────────────────────────────────────────────────────────────────
+gSpike = "۵. فیلتر جهش حجم"
+useSpike = input.bool(true, "فعال‌سازی فیلتر جهش حجم", group = gSpike)
+spikeLen = input.int(20, "تعداد کندل میانگین حجم",
+     minval = 2, group = gSpike)
+spikeMultiple = input.float(3.0, "حداکثر حجم نسبت به میانگین",
+     minval = 1, step = 0.25, group = gSpike)
+avgVolume = ta.sma(volume, spikeLen)[1]
+spikeReady = not na(volume) and not na(avgVolume) and avgVolume > 0
+hasSpike = spikeReady and volume > spikeMultiple * avgVolume
+spikeOK = not useSpike or (spikeReady and not hasSpike)
+
+// ─────────────────────────────────────────────────────────────────────
+// 6. Exact 15-minute slot RVOL over prior N calendar days (24/7 market)
+// ─────────────────────────────────────────────────────────────────────
+gRvol = "۶. حجم نسبی در ساعت مشابه (RVOL)"
+useRvol = input.bool(true, "فعال‌سازی فیلتر RVOL", group = gRvol)
+rvolDays = input.int(14, "تعداد روزهای مقایسه",
+     minval = 1, maxval = 28, group = gRvol)
+minRvol = input.float(0.8, "حداقل RVOL مجاز",
+     minval = 0.1, step = 0.1, group = gRvol)
+
+float histVolumeSum = 0.0
+int histVolumeCount = 0
+for day = 1 to rvolDays
+    int barsAgo = day * 96
+    bool sameSlot = not na(time[barsAgo]) and
+         time - time[barsAgo] == day * 86400000
+    float priorVol = volume[barsAgo]
+    if sameSlot and not na(priorVol)
+        histVolumeSum += priorVol
+        histVolumeCount += 1
+
+rvolReady = histVolumeCount == rvolDays and histVolumeSum > 0 and not na(volume)
+float rvol = rvolReady ? volume / (histVolumeSum / histVolumeCount) : na
+rvolOK = not useRvol or (rvolReady and rvol >= minRvol)
+
+// ─────────────────────────────────────────────────────────────────────
+// 7. Intrabar 1m directional volume proxy; NOT real aggressor/order-flow
+// ─────────────────────────────────────────────────────────────────────
+gDelta = "۷. دلتای حجم تخمینی"
+useDelta = input.bool(true, "فعال‌سازی فیلتر دلتا", group = gDelta)
+minDeltaPct = input.float(0, "حداقل قدرت دلتا (%)",
+     minval = 0, maxval = 100, step = 1, group = gDelta)
+minIntrabars = input.int(10, "حداقل کندل یک‌دقیقه‌ای",
+     minval = 1, maxval = 15, group = gDelta)
+minCoverage = input.float(80, "حداقل پوشش حجم یک‌دقیقه‌ای (%)",
+     minval = 1, maxval = 100, group = gDelta)
+
+[deltaParts, volumeParts] = request.security_lower_tf(
+     syminfo.tickerid, "1",
+     [close > open ? volume : close < open ? -volume : 0.0, volume])
+
+float deltaVolume = 0.0
+float lowerVolume = 0.0
+int intrabarCount = array.size(deltaParts)
+if intrabarCount > 0
+    for i = 0 to intrabarCount - 1
+        deltaVolume += nz(array.get(deltaParts, i), 0.0)
+        lowerVolume += nz(array.get(volumeParts, i), 0.0)
+
+float deltaPct = lowerVolume > 0 ? 100 * deltaVolume / lowerVolume : na
+float coveragePct = not na(volume) and volume > 0 ?
+     100 * lowerVolume / volume : na
+deltaReady = intrabarCount >= minIntrabars and lowerVolume > 0 and
+     not na(coveragePct) and coveragePct >= minCoverage
+deltaLongOK = not useDelta or (deltaReady and deltaPct > minDeltaPct)
+deltaShortOK = not useDelta or (deltaReady and deltaPct < -minDeltaPct)
+
+// ─────────────────────────────────────────────────────────────────────
+// 8. Symbol / timeframe guard; size = equity allocation × selected leverage
+// ─────────────────────────────────────────────────────────────────────
+is15m = timeframe.isminutes and timeframe.multiplier == 15
+validQuote = syminfo.currency == "USD" or syminfo.currency == "USDT"
+float quoteEquity = nz(strategy.convert_to_symbol(math.max(strategy.equity, 0)),
+     math.max(strategy.equity, 0))
+float collateral = quoteEquity * capitalPct / 100.0
+float contractValue = close * syminfo.pointvalue
+float qtyStep = syminfo.mincontract
+float longQty = contractValue > 0 and qtyStep > 0 ?
+     math.floor((collateral * longLev / contractValue) / qtyStep) * qtyStep : na
+float shortQty = contractValue > 0 and qtyStep > 0 ?
+     math.floor((collateral * shortLev / contractValue) / qtyStep) * qtyStep : na
+
+canEnter = is15m and validQuote and barstate.isconfirmed and
+     strategy.position_size == 0 and strategy.equity > 0
+volumeOK = spikeOK and rvolOK
+enterLong = canEnter and longAllowed and rawLong and
+     rsiValue >= rsiLongMin and volumeOK and deltaLongOK and
+     not na(longQty) and longQty >= qtyStep
+enterShort = canEnter and shortAllowed and rawShort and
+     rsiValue <= rsiShortMax and volumeOK and deltaShortOK and
+     not na(shortQty) and shortQty >= qtyStep
+
+// TradingView profit/loss in ticks are anchored to the simulated fill price.
+// Tick count is estimated from signal close. Later updates anchor exact
+// % targets to strategy.position_avg_price after the fill is observable.
+int tpTicks = math.max(1,
+     int(math.round(close * tpPct / 100.0 / syminfo.mintick)))
+int slTicks = math.max(1,
+     int(math.round(close * slPct / 100.0 / syminfo.mintick)))
+
+// ─────────────────────────────────────────────────────────────────────
+// 9. Entry orders and protective OCA exits
+// ─────────────────────────────────────────────────────────────────────
+var string activeTradeId = ""
+var string tpAlert = ""
+var string slAlert = ""
+string baseJSON = '"schema":"btc-futures-v1","version":"1.4","symbol":"' +
+     syminfo.tickerid + '","timeframe":"' + timeframe.period + '"'
+
+if enterLong
+    activeTradeId := syminfo.tickerid + ":" + str.tostring(time) + ":L"
+    tpAlert := '{' + baseJSON + ',"trade_id":"' + activeTradeId +
+         '","event":"exit","side":"long","reason":"take_profit"}'
+    slAlert := '{' + baseJSON + ',"trade_id":"' + activeTradeId +
+         '","event":"exit","side":"long","reason":"stop_loss"}'
+    string entryAlert = '{' + baseJSON + ',"trade_id":"' + activeTradeId +
+         '","event":"entry","side":"long","qty":' + str.tostring(longQty) +
+         ',"leverage":' + str.tostring(longLev) +
+         ',"tp_pct":' + str.tostring(tpPct) +
+         ',"sl_pct":' + str.tostring(slPct) + '}'
+    strategy.entry("L", strategy.long, qty = longQty,
+         alert_message = entryAlert)
+    strategy.exit("L-X", from_entry = "L",
+         profit = tpTicks, loss = slTicks,
+         alert_profit = tpAlert, alert_loss = slAlert)
+
+if enterShort
+    activeTradeId := syminfo.tickerid + ":" + str.tostring(time) + ":S"
+    tpAlert := '{' + baseJSON + ',"trade_id":"' + activeTradeId +
+         '","event":"exit","side":"short","reason":"take_profit"}'
+    slAlert := '{' + baseJSON + ',"trade_id":"' + activeTradeId +
+         '","event":"exit","side":"short","reason":"stop_loss"}'
+    string entryAlert = '{' + baseJSON + ',"trade_id":"' + activeTradeId +
+         '","event":"entry","side":"short","qty":' + str.tostring(shortQty) +
+         ',"leverage":' + str.tostring(shortLev) +
+         ',"tp_pct":' + str.tostring(tpPct) +
+         ',"sl_pct":' + str.tostring(slPct) + '}'
+    strategy.entry("S", strategy.short, qty = shortQty,
+         alert_message = entryAlert)
+    strategy.exit("S-X", from_entry = "S",
+         profit = tpTicks, loss = slTicks,
+         alert_profit = tpAlert, alert_loss = slAlert)
+
+// ─────────────────────────────────────────────────────────────────────
+// 10. Position management:
+// (a) trend no longer aligned -> close;
+// (b) optional opposite *confirmed* 15m candle -> close;
+// (c) otherwise maintain exact TP/SL based on entry average.
+// Opposite candle = bearish close < open for long;
+//                   bullish close > open for short.
+// Doji (close == open) does not close.
+// immediately=true models an order at this closing tick rather than next open.
+// It is an emulator assumption, NOT a guarantee of real close-price execution.
+// ─────────────────────────────────────────────────────────────────────
+bool bearishCandle = barstate.isconfirmed and close < open
+bool bullishCandle = barstate.isconfirmed and close > open
+bool invalidLong = not longAllowed or not is15m or not validQuote
+bool invalidShort = not shortAllowed or not is15m or not validQuote
+
+float activeTP = na
+float activeSL = na
+
+if strategy.position_size > 0
+    activeTP := math.round_to_mintick(
+         strategy.position_avg_price * (1 + tpPct / 100.0))
+    activeSL := math.round_to_mintick(
+         strategy.position_avg_price * (1 - slPct / 100.0))
+    if invalidLong or (exitOpposite and is15m and bearishCandle)
+        strategy.cancel("L-X")
+        string why = invalidLong ? "trend_mismatch" : "opposite_candle"
+        strategy.close("L", immediately = true,
+             comment = invalidLong ? "روند نامعتبر" : "کندل مخالف",
+             alert_message = '{' + baseJSON +
+             ',"trade_id":"' + activeTradeId +
+             '","event":"exit","side":"long","reason":"' + why + '"}')
+    else
+        strategy.exit("L-X", from_entry = "L",
+             limit = activeTP, stop = activeSL,
+             alert_profit = tpAlert, alert_loss = slAlert)
+
+if strategy.position_size < 0
+    activeTP := math.round_to_mintick(
+         strategy.position_avg_price * (1 - tpPct / 100.0))
+    activeSL := math.round_to_mintick(
+         strategy.position_avg_price * (1 + slPct / 100.0))
+    if invalidShort or (exitOpposite and is15m and bullishCandle)
+        strategy.cancel("S-X")
+        string why = invalidShort ? "trend_mismatch" : "opposite_candle"
+        strategy.close("S", immediately = true,
+             comment = invalidShort ? "روند نامعتبر" : "کندل مخالف",
+             alert_message = '{' + baseJSON +
+             ',"trade_id":"' + activeTradeId +
+             '","event":"exit","side":"short","reason":"' + why + '"}')
+    else
+        strategy.exit("S-X", from_entry = "S",
+             limit = activeTP, stop = activeSL,
+             alert_profit = tpAlert, alert_loss = slAlert)
+
+// ─────────────────────────────────────────────────────────────────────
+// 11. Chart display and small Persian dashboard
+// ─────────────────────────────────────────────────────────────────────
+gView = "۸. نمایش"
+showDash = input.bool(true, "نمایش داشبورد", group = gView)
+plot(emaFast, "EMA سریع", color = color.teal)
+plot(emaSlow, "EMA کند", color = color.orange)
+plot(activeTP, "حد سود", color = color.green, style = plot.style_linebr)
+plot(activeSL, "حد ضرر", color = color.red, style = plot.style_linebr)
+plotshape(enterLong, title = "سیگنال لانگ", style = shape.triangleup,
+     location = location.belowbar, color = color.lime, size = size.small)
+plotshape(enterShort, title = "سیگنال شورت", style = shape.triangledown,
+     location = location.abovebar, color = color.red, size = size.small)
+
+var table dash = table.new(position.top_right, 2, 8, border_width = 1)
+string dText = dailyBull ? "صعودی" : dailyBear ? "نزولی" : "خنثی"
+string wText = weeklyBull ? "صعودی" : weeklyBear ? "نزولی" : "خنثی"
+string modeText = not is15m ? "فقط ۱۵ دقیقه" :
+     not validQuote ? "نماد نامعتبر" :
+     longAllowed ? "فقط لانگ" : shortAllowed ? "فقط شورت" : "توقف معامله"
+string deltaText = not useDelta ? "خاموش" :
+     deltaReady ? str.tostring(deltaPct, "#.##") + "%" : "داده ناکافی"
+string rvolText = not useRvol ? "خاموش" :
+     rvolReady ? str.tostring(rvol, "#.##") : "داده ناکافی"
+string spikeText = not useSpike ? "خاموش" :
+     not spikeReady ? "داده ناکافی" : hasSpike ? "جهش حجم" : "عادی"
+string positionText = strategy.position_size > 0 ? "لانگ" :
+     strategy.position_size < 0 ? "شورت" : "بدون پوزیشن"
+
+if barstate.islast
+    if showDash
+        table.cell(dash, 0, 0, "روزانه", bgcolor = color.black, text_color = color.white)
+        table.cell(dash, 1, 0, dText, bgcolor = dailyBull ? color.green : dailyBear ? color.red : color.gray, text_color = color.white)
+        table.cell(dash, 0, 1, "هفتگی", bgcolor = color.black, text_color = color.white)
+        table.cell(dash, 1, 1, wText, bgcolor = weeklyBull ? color.green : weeklyBear ? color.red : color.gray, text_color = color.white)
+        table.cell(dash, 0, 2, "معامله مجاز", bgcolor = color.black, text_color = color.white)
+        table.cell(dash, 1, 2, modeText, bgcolor = longAllowed and is15m and validQuote ? color.green : shortAllowed and is15m and validQuote ? color.red : color.gray, text_color = color.white)
+        table.cell(dash, 0, 3, "پوزیشن", bgcolor = color.black, text_color = color.white)
+        table.cell(dash, 1, 3, positionText, bgcolor = color.gray, text_color = color.white)
+        table.cell(dash, 0, 4, "کندل مخالف", bgcolor = color.black, text_color = color.white)
+        table.cell(dash, 1, 4, exitOpposite ? "خروج فعال" : "خاموش", bgcolor = exitOpposite ? color.orange : color.gray, text_color = color.white)
+        table.cell(dash, 0, 5, "جهش حجم", bgcolor = color.black, text_color = color.white)
+        table.cell(dash, 1, 5, spikeText, bgcolor = useSpike and hasSpike ? color.red : color.gray, text_color = color.white)
+        table.cell(dash, 0, 6, "RVOL", bgcolor = color.black, text_color = color.white)
+        table.cell(dash, 1, 6, rvolText, bgcolor = rvolOK ? color.green : color.gray, text_color = color.white)
+        table.cell(dash, 0, 7, "Delta / TP / SL", bgcolor = color.black, text_color = color.white)
+        table.cell(dash, 1, 7, deltaText + " | " + str.tostring(tpPct) + "% / " + str.tostring(slPct) + "%",
+             bgcolor = color.black, text_color = color.white)
+    else
+        table.clear(dash, 0, 0, 1, 7)
