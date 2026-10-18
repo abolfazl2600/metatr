@@ -572,6 +572,75 @@ def renew_session(workspace, *, feed=None, now=None, before_commit_hook=None):
                 shutil.rmtree(stage)
 
 
+
+def reset_halt(workspace, reason, *, feed=None, now=None):
+    """Explicit operator-only HALT reset after a fresh public-source health gate."""
+    if not isinstance(reason, str) or len(reason.strip()) < 8:
+        raise ValueError("A specific reset reason of at least 8 characters is required")
+    workspace_arg = Path(workspace).expanduser()
+    if workspace_arg.is_symlink() or not workspace_arg.is_dir():
+        raise ValueError("Existing, non-symlink Paper workspace required")
+    workspace = workspace_arg.resolve()
+    setup_path = workspace / "setup.json"
+    profile = json.loads(_read_regular(setup_path))
+    if (profile.get("schema_version") != 1
+            or profile.get("label") != "PAPER_ONLY_SIMULATED"
+            or profile.get("account") != "bip-paper"
+            or profile.get("market") != MARKET.key):
+        raise ValueError("Unknown Paper setup profile")
+    current_time = stamp(now or datetime.now(timezone.utc).isoformat())
+    contract_path = _active_config_path(workspace, profile, "contract")
+    calendar_path = _active_config_path(workspace, profile, "calendar")
+    contract = _load_contract(contract_path)
+    calendar = _load_calendar(calendar_path)
+    if (contract.fingerprint != profile.get("contract_sha256")
+            or contract.calendar_version != calendar.version
+            or contract.calendar_id != calendar.calendar_id):
+        raise ValueError("PAPER_CONTRACT_CALENDAR_PIN_MISMATCH")
+    risk_body = json.loads(_read_regular(workspace / "risk.json"))
+    risk_body["market"] = parse_market(risk_body["market"])
+    policy = PaperRiskPolicy(**risk_body)
+    policy.validate()
+    if policy.fingerprint != profile.get("risk_sha256"):
+        raise ValueError("PAPER_RISK_POLICY_PIN_MISMATCH")
+    costs = CostScenario(**json.loads(_read_regular(workspace / "costs.json")))
+    if costs.fingerprint != profile.get("cost_sha256"):
+        raise ValueError("PAPER_COST_SCENARIO_PIN_MISMATCH")
+
+    capture = _capture_with_retry(feed or CoinbaseFuturesFeed(),
+                                  now=current_time.to_pydatetime())
+    captured_at = stamp(capture.captured_at)
+    current_calendar, opened, closed = _build_confirmed_calendar(capture.product, captured_at)
+    if current_calendar.version != calendar.version:
+        raise ValueError("SESSION_RENEWAL_REQUIRED_BEFORE_RESET")
+    contract.validate(capture.product, captured_at)
+    costs.validate(contract, captured_at)
+    first = capture.bars.index[0]
+    end = capture.bars.index[-1] + pd.Timedelta(minutes=15)
+    if (len(capture.bars) != 80 or first < opened or end > closed
+            or not end <= captured_at < end + pd.Timedelta(minutes=30)):
+        raise ValueError("PUBLIC_CAPTURE_STALE_OR_OUTSIDE_SESSION")
+    store = FuturesSQLiteStore(workspace / "market.sqlite")
+    store.save_snapshot(MARKET, source="coinbase_public_futures",
+                        raw_payload=capture.raw_payload, contract_metadata=capture.product,
+                        bars=capture.bars, asof=captured_at.to_pydatetime())
+    quality, dataset = validate_dataset(
+        store, MARKET, first, end, captured_at, calendar=calendar, require_fresh=True,
+    )
+    if not quality.ready:
+        raise ValueError(f"PUBLIC_DATA_NOT_READY:{quality.issues}")
+    paper = PaperStore(workspace / "paper.sqlite")
+    paper.reconcile(profile["account"])
+    state = paper.inspect(profile["account"])
+    if not state["halted"]:
+        raise ValueError("Account is not halted")
+    _checkpoint_continuity(state, dataset)
+    return paper_main(runner_args(
+        workspace, "reset-halt", reason=reason, start_utc=dataset.start_utc,
+        end_utc=dataset.end_utc, asof_utc=dataset.asof_utc,
+    ))
+
+
 def runner_args(workspace, command, *, max_cycles=None, display_output_dir=None):
     workspace = Path(workspace).expanduser().resolve()
     profile = json.loads((workspace / "setup.json").read_text())
