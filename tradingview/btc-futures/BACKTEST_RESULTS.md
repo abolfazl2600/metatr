@@ -2,19 +2,20 @@
 
 ثبت آزمایش‌های TradingView برای مقایسه کانفیگ‌ها. نتیجه‌ها فقط از بک‌تست یا شواهد واقعی کاربر ثبت می‌شوند؛ مقدارهای نامعلوم با «تأیید نشده» مشخص می‌شوند.
 
-## Baseline — strategy.pine v1.6
+## Baseline — strategy.pine v1.7
 
 | Setting | Default |
 | --- | --- |
 | Symbol | BTC linear USD/USDT perpetual — specify exact TradingView symbol |
-| Chart | 15m, standard candles |
+| Execution chart | 5m, standard candles (required for true 5m exit) |
+| Entry timeframe | 15m only, at confirmed close; EMA, RSI, Donchian, spike, RVOL and 24h range in 15m context |
 | Confirmed trend | Monthly EMA 6/12 + Weekly EMA 10/30 (both aligned) |
 | Entry signal | EMA crossover 21/55; RSI 14; Long RSI ≥52, Short RSI ≤48 |
 | Alternative signal | Donchian breakout 20 |
-| Long/Short leverage | 3x / 3x |
+| Long/Short leverage | 1x / 1x |
 | Equity allocation | 95% |
 | TP/SL (price move) | 0.5% / 1.0% |
-| Opposite 15m candle exit | Enabled |
+| Profitable opposite 5m candle exit | Enabled; opposite 5m close AND strategy.openprofit > 0 (gross unrealized PnL) |
 | 24h high/low proximity block | Enabled; no new entry when confirmed 15m close is within 1.0% of either rolling 24h extreme (96 confirmed bars, including signal bar) |
 | Volume Spike | Enabled; at most 3 × SMA(volume, 20)[1] |
 | RVOL | Enabled; minimum 0.8; 14 prior same-time daily slots |
@@ -30,7 +31,7 @@
 | Run ID | Code version | Symbol/exchange | Backtest period | Config changes | Trades | Win rate % | Net profit % | Profit factor | Max drawdown % | Avg trade | Evidence / Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | BT-001 | v1.5 | Binance BTC/USDT perpetual (exact ticker unverified) | 2026-08-01 to 2026-10-18 (date selector; timezone unverified) | 15m EMA cross; equity 95%; L 3x / S 1x; TP 1.0%, SL 1.0%; opposite-candle exit ON; monthly EMA 6/12, weekly EMA 10/30; **no 24h filter in v1.5** | 21 | 33.33 | +0.43 | 1.381 | 0.89 | Not reported | User screenshot (2026-10-18); partial config; see details below |
-| — | v1.6 | — | — | Baseline, 24h block ON at 1.0% | — | — | — | — | — | — | Not yet tested |
+| — | v1.7 | — | — | Baseline, execution 5m / entry M15, 1x/1x, profitable 5m reverse-candle exit ON | — | — | — | — | — | — | Not yet tested |
 
 ## BT-001 — Screenshot-derived details (2026-10-18)
 
@@ -44,7 +45,7 @@
 
 ## Reporting format
 
-برای هر اجرای بک‌تست یک Run ID بدهید و این داده‌ها را بفرستید. برای ارزیابی اثر فیلتر جدید، یک آزمایش با **24h proximity ON / 1.0%** و یک آزمایش با **OFF**، روی همان نماد، بازه و سایر تنظیمات اجرا کنید:
+برای هر اجرای بک‌تست یک Run ID بدهید و این داده‌ها را بفرستید. **از v1.7 به بعد حتماً چارت 5m بگذارید، سیگنال ورود همچنان M15 است و خروج با کندل مخالف فقط در صورت سود باز مثبت انجام می‌شود. نتایج نسخه‌های v1.5/v1.6 با اجرا روی 15m را بدون ذکر تفاوت تایم‌فریم با v1.7 مستقیم مقایسه نکنید.** برای ارزیابی اثر فیلتر جدید، یک آزمایش با **24h proximity ON / 1.0%** و یک آزمایش با **OFF**، روی همان نماد، بازه و سایر تنظیمات اجرا کنید:
 
 
 - نماد دقیق، صرافی، تاریخ آغاز و پایان و تایم‌فریم، نوع نمودار (کندل استاندارد یا غیره).
