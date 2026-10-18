@@ -79,10 +79,14 @@ def test_accepted_intent_past_expiry_cannot_fill_during_catchup(tmp_path):
     store, key, _, _, health, policy, contract, now = inputs(tmp_path)
     simulator = PaperExecutionSimulator(store)
     assert simulator.approve("test", key, health, policy, contract, now) == "ACCEPTED"
+    from test_backtest import fixture
+
+    args = fixture(tmp_path)
+    next_bar = PaperMarketState(slice_dataset(args[0], 0, 2), health.costs)
     expired_clock = (pd.Timestamp(now) + pd.Timedelta(hours=1)).isoformat()
 
     assert simulator.process_next_bar(
-        "test", key, health, policy, contract, expired_clock
+        "test", key, next_bar, policy, contract, expired_clock
     ) is None
     order = store.inspect("test")["orders"][0]
     assert order["status"] == "EXPIRED"
