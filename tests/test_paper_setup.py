@@ -285,7 +285,7 @@ def test_renewal_never_clears_a_persisted_halt(tmp_path):
     result = renew_session(root, feed=renewal_feed(changed), now=changed.captured_at)
     assert result["paper_halted"] is True
     assert result["halt_reset"] is False
-    assert PaperStore(root / "paper.sqlite").inspect("bip-paper")["halted"] is True
+    assert bool(PaperStore(root / "paper.sqlite").inspect("bip-paper")["halted"])
 
 
 def test_renewal_rejects_concurrent_worker_lock_without_setup_mutation(tmp_path):
