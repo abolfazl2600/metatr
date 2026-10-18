@@ -232,8 +232,15 @@ def test_renew_session_publishes_verified_generation_without_mutating_paper(tmp_
 def test_renew_session_allows_fresh_refresh_with_unchanged_session(tmp_path):
     root, initial = setup_for_renewal(tmp_path)
     renewed = copy.deepcopy(initial)
-    renewed.bars = renewed.bars.copy()
-    renewed.bars.index = renewed.bars.index + pd.Timedelta(minutes=15)
+    # Preserve every previously verified candle byte-for-byte and append one
+    # new M15 candle. Shifting all timestamps would simulate conflicting history.
+    new_timestamp = renewed.bars.index[-1] + pd.Timedelta(minutes=15)
+    new_row = renewed.bars.iloc[-1].copy()
+    renewed.bars = renewed.bars.iloc[1:].copy()
+    renewed.bars = pd.concat([
+        renewed.bars,
+        pd.DataFrame([new_row], index=pd.DatetimeIndex([new_timestamp])),
+    ])
     renewed.captured_at = renewed.captured_at + pd.Timedelta(minutes=15)
     renewed.raw_payload = {
         "candles": [
