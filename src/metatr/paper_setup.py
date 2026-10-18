@@ -241,12 +241,12 @@ def _build_confirmed_calendar(product, captured_at):
             if left <= now < right:
                 raise ValueError("PUBLIC_SESSION_MAINTENANCE")
             closures.append((left.isoformat(), right.isoformat()))
+    # Preserve the established calendar-version scheme so an unchanged
+    # API session is recognized as a no-op, not a fake renewal.
     version = digest({
-        "market": MARKET.key,
         "open": opened.isoformat(),
         "close": closed.isoformat(),
         "closures": closures,
-        "source": SOURCE,
     })[:16]
     calendar = SessionCalendar(
         MARKET, "coinbase-confirmed-session", version, SOURCE, "UTC",
