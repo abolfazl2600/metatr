@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import shutil
+import sqlite3
 import sys
 import tempfile
 import time
@@ -804,7 +805,7 @@ def main(argv=None):
             return paper_main(runner_args(args.workspace, "run", max_cycles=args.max_cycles,
                                           display_output_dir=args.display_output_dir))
         return 0
-    except (ValueError, TypeError, KeyError, OSError) as exc:
+    except (ValueError, TypeError, KeyError, OSError, sqlite3.Error, ArithmeticError) as exc:
         print(f"PAPER setup stopped: {exc}", file=sys.stderr)
         return 1
 
