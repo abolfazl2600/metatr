@@ -26,7 +26,7 @@ from metatr.dataset_quality import validate_dataset
 from metatr.exchanges.coinbase_futures import CoinbaseFuturesFeed
 from metatr.futures_store import FuturesSQLiteStore
 from metatr.model_registry import StrategyRegistry, StrategySpec
-from metatr.paper.risk import PaperMarketState, PaperRiskPolicy, evaluate
+from metatr.paper.risk import PaperMarketState, PaperRiskEngine, PaperRiskPolicy, evaluate
 from metatr.paper.runner import account_lock, checkpoint
 from metatr.paper.store import PaperStore
 from metatr.paper_cli import main as paper_main
@@ -597,7 +597,7 @@ def renew_session(workspace, *, feed=None, now=None, before_commit_hook=None):
 
 
 def reset_halt(workspace, reason, *, feed=None, now=None):
-    """Explicit operator-only HALT reset after a fresh public-source health gate."""
+    """Explicit operator-only HALT reset under the account lock and fresh health gate."""
     if not isinstance(reason, str) or len(reason.strip()) < 8:
         raise ValueError("A specific reset reason of at least 8 characters is required")
     workspace_arg = Path(workspace).expanduser()
@@ -605,78 +605,98 @@ def reset_halt(workspace, reason, *, feed=None, now=None):
         raise ValueError("Existing, non-symlink Paper workspace required")
     workspace = workspace_arg.resolve()
     setup_path = workspace / "setup.json"
-    profile = json.loads(_read_regular(setup_path))
-    if (profile.get("schema_version") != 1
-            or profile.get("label") != "PAPER_ONLY_SIMULATED"
-            or profile.get("account") != "bip-paper"
-            or profile.get("market") != MARKET.key):
+    initial_profile = json.loads(_read_regular(setup_path))
+    if (initial_profile.get("schema_version") != 1
+            or initial_profile.get("label") != "PAPER_ONLY_SIMULATED"
+            or initial_profile.get("account") != "bip-paper"
+            or initial_profile.get("market") != MARKET.key):
         raise ValueError("Unknown Paper setup profile")
     current_time = stamp(now or datetime.now(timezone.utc).isoformat())
-    contract_path = _active_config_path(workspace, profile, "contract")
-    calendar_path = _active_config_path(workspace, profile, "calendar")
-    contract = _load_contract(contract_path)
-    calendar = _load_calendar(calendar_path)
-    if (contract.fingerprint != profile.get("contract_sha256")
-            or contract.calendar_version != calendar.version
-            or contract.calendar_id != calendar.calendar_id):
-        raise ValueError("PAPER_CONTRACT_CALENDAR_PIN_MISMATCH")
-    risk_body = json.loads(_read_regular(workspace / "risk.json"))
-    risk_body["market"] = parse_market(risk_body["market"])
-    policy = PaperRiskPolicy(**risk_body)
-    policy.validate()
-    if policy.fingerprint != profile.get("risk_sha256"):
-        raise ValueError("PAPER_RISK_POLICY_PIN_MISMATCH")
-    costs = CostScenario(**json.loads(_read_regular(workspace / "costs.json")))
-    if costs.fingerprint != profile.get("cost_sha256"):
-        raise ValueError("PAPER_COST_SCENARIO_PIN_MISMATCH")
+    feed = feed or CoinbaseFuturesFeed()
 
-    capture = _capture_with_retry(feed or CoinbaseFuturesFeed(),
-                                  now=current_time.to_pydatetime())
-    captured_at = stamp(capture.captured_at)
-    current_calendar, opened, closed = _build_confirmed_calendar(capture.product, captured_at)
-    if current_calendar.version != calendar.version:
-        raise ValueError("SESSION_RENEWAL_REQUIRED_BEFORE_RESET")
-    contract.validate(capture.product, captured_at)
-    costs.validate(contract, captured_at)
-    first = capture.bars.index[0]
-    end = capture.bars.index[-1] + pd.Timedelta(minutes=15)
-    if (len(capture.bars) != 80 or first < opened or end > closed
-            or not end <= captured_at < end + pd.Timedelta(minutes=30)):
-        raise ValueError("PUBLIC_CAPTURE_STALE_OR_OUTSIDE_SESSION")
-    store = FuturesSQLiteStore(workspace / "market.sqlite")
-    store.save_snapshot(MARKET, source="coinbase_public_futures",
-                        raw_payload=capture.raw_payload, contract_metadata=capture.product,
-                        bars=capture.bars, asof=captured_at.to_pydatetime())
-    quality, dataset = validate_dataset(
-        store, MARKET, first, end, captured_at, calendar=calendar, require_fresh=True,
-    )
-    if not quality.ready:
-        raise ValueError(f"PUBLIC_DATA_NOT_READY:{quality.issues}")
-    paper = PaperStore(workspace / "paper.sqlite")
-    paper.reconcile(profile["account"])
-    state = paper.inspect(profile["account"])
-    if state["market"] != MARKET.key or state["currency"] != policy.currency:
-        raise ValueError("PAPER_ACCOUNT_MARKET_MISMATCH")
-    registry = StrategyRegistry(workspace / "registry.sqlite")
-    spec = registry.resolve(MARKET, "momentum", "1.0.0")
-    if spec.status == "retired":
-        raise ValueError("MODEL_RETIRED")
-    if state["runs"]:
-        pins = state["runs"][-1]["pins"]
-        if (pins.get("strategy_id") != spec.strategy_id
-                or pins.get("strategy_version") != spec.version
-                or pins.get("strategy_config_sha256") != spec.config_sha256
-                or pins.get("risk_policy_sha256") != policy.fingerprint):
-            raise ValueError("PAPER_MODEL_OR_RISK_PIN_MISMATCH")
-    if not state["halted"]:
-        raise ValueError("Account is not halted")
-    _checkpoint_continuity(state, dataset)
-    _verify_account_limits(state, policy, contract, dataset)
-    return paper_main(runner_args(
-        workspace, "reset-halt", reason=reason, start_utc=dataset.start_utc,
-        end_utc=dataset.end_utc, asof_utc=dataset.asof_utc,
-    ))
+    # Hold the same lock as the worker across source capture, checkpoint review and reset.
+    with account_lock(workspace / "paper.sqlite", initial_profile["account"]):
+        profile = json.loads(_read_regular(setup_path))
+        if profile != initial_profile:
+            raise ValueError("PAPER_SETUP_CHANGED_RETRY_WITH_CURRENT_PROFILE")
+        contract_path = _active_config_path(workspace, profile, "contract")
+        calendar_path = _active_config_path(workspace, profile, "calendar")
+        contract = _load_contract(contract_path)
+        calendar = _load_calendar(calendar_path)
+        if (contract.fingerprint != profile.get("contract_sha256")
+                or contract.calendar_version != calendar.version
+                or contract.calendar_id != calendar.calendar_id):
+            raise ValueError("PAPER_CONTRACT_CALENDAR_PIN_MISMATCH")
+        risk_body = json.loads(_read_regular(workspace / "risk.json"))
+        risk_body["market"] = parse_market(risk_body["market"])
+        policy = PaperRiskPolicy(**risk_body)
+        policy.validate()
+        if policy.fingerprint != profile.get("risk_sha256"):
+            raise ValueError("PAPER_RISK_POLICY_PIN_MISMATCH")
+        costs = CostScenario(**json.loads(_read_regular(workspace / "costs.json")))
+        if costs.fingerprint != profile.get("cost_sha256"):
+            raise ValueError("PAPER_COST_SCENARIO_PIN_MISMATCH")
 
+        paper = PaperStore(workspace / "paper.sqlite")
+        paper.reconcile(profile["account"])
+        state = paper.inspect(profile["account"])
+        if state["market"] != MARKET.key or state["currency"] != policy.currency:
+            raise ValueError("PAPER_ACCOUNT_MARKET_MISMATCH")
+        if not state["halted"]:
+            raise ValueError("Account is not halted")
+        registry = StrategyRegistry(workspace / "registry.sqlite")
+        spec = registry.resolve(MARKET, "momentum", "1.0.0")
+        if spec.status == "retired":
+            raise ValueError("MODEL_RETIRED")
+        if state["runs"]:
+            pins = state["runs"][-1]["pins"]
+            if (pins.get("strategy_id") != spec.strategy_id
+                    or pins.get("strategy_version") != spec.version
+                    or pins.get("strategy_config_sha256") != spec.config_sha256
+                    or pins.get("risk_policy_sha256") != policy.fingerprint):
+                raise ValueError("PAPER_MODEL_OR_RISK_PIN_MISMATCH")
+
+        capture = _capture_with_retry(feed, now=current_time.to_pydatetime())
+        captured_at = stamp(capture.captured_at)
+        current_calendar, opened, closed = _build_confirmed_calendar(
+            capture.product, captured_at
+        )
+        if current_calendar.version != calendar.version:
+            raise ValueError("SESSION_RENEWAL_REQUIRED_BEFORE_RESET")
+        contract.validate(capture.product, captured_at)
+        costs.validate(contract, captured_at)
+        first = capture.bars.index[0]
+        end = capture.bars.index[-1] + pd.Timedelta(minutes=15)
+        if (len(capture.bars) != 80 or first < opened or end > closed
+                or not end <= captured_at < end + pd.Timedelta(minutes=30)):
+            raise ValueError("PUBLIC_CAPTURE_STALE_OR_OUTSIDE_SESSION")
+        store = FuturesSQLiteStore(workspace / "market.sqlite")
+        store.save_snapshot(
+            MARKET, source="coinbase_public_futures", raw_payload=capture.raw_payload,
+            contract_metadata=capture.product, bars=capture.bars,
+            asof=captured_at.to_pydatetime(),
+        )
+        quality, dataset = validate_dataset(
+            store, MARKET, first, end, captured_at, calendar=calendar, require_fresh=True,
+        )
+        if not quality.ready:
+            raise ValueError(f"PUBLIC_DATA_NOT_READY:{quality.issues}")
+        _checkpoint_continuity(state, dataset)
+        _verify_account_limits(state, policy, contract, dataset)
+        PaperRiskEngine(paper).reset(
+            profile["account"], policy, PaperMarketState(dataset, costs, "PUBLIC"),
+            contract, captured_at, reason.strip(),
+        )
+        return {
+            "status": "PAPER_HALT_RESET_AFTER_FRESH_HEALTH_GATE",
+            "account": profile["account"],
+            "market": MARKET.key,
+            "reason": reason.strip(),
+            "source_received_utc": captured_at.isoformat(),
+            "session_calendar_version": calendar.version,
+            "paper_halted": bool(paper.inspect(profile["account"])["halted"]),
+            "real_execution_available": False,
+        }
 
 def runner_args(workspace, command, *, max_cycles=None, display_output_dir=None,
                 reason=None, start_utc=None, end_utc=None, asof_utc=None):
@@ -759,7 +779,8 @@ def main(argv=None):
                 raise ValueError(
                     "--reset-halt requires --reason and cannot be combined with start options"
                 )
-            return reset_halt(args.workspace, args.reason)
+            print(canonical(reset_halt(args.workspace, args.reason)), flush=True)
+            return 0
         if args.reason:
             raise ValueError("--reason is only valid with --reset-halt")
         if args.status or args.report:
