@@ -281,7 +281,7 @@ guesses future sessions or fabricates bars/fills to bridge a gap.
 The new `contract.json` and `calendar.json` are written together into an
 immutable `session-generations/<id>/` directory. Before-images of the prior
 `setup.json`, effective contract and calendar are preserved by raw SHA-256.
-The generation also contains `renewal.json`, public metadata, and a link to the
+The generation also contains `renewal-<sha256>.json`, public metadata, and a link to the
 independent Issue #43 observation evidence. Root `setup.json` is the single
 atomic commit pointer; a staged/orphan generation is not active until that
 pointer references it. Runner arguments verify the active files' hashes.
