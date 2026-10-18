@@ -54,6 +54,12 @@ class PaperExecutionSimulator:
         if order["status"] != "ACCEPTED":
             return None
         intent = next(i["data"] for i in state["intents"] if i["intent_id"] == intent_id)
+        expires_at = intent.get("expires_at_utc")
+        if expires_at is not None and stamp(now_utc) >= stamp(expires_at):
+            self.store.transition(
+                account, intent_id, "EXPIRED", at_utc=now_utc, reason="INTENT_EXPIRED"
+            )
+            return None
         pins = next(r["pins"] for r in state["runs"] if r["run_id"] == intent["run_id"])
         approval = json.loads(order["approval_json"])
         if (
