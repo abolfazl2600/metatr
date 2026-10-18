@@ -696,6 +696,9 @@ def main(argv=None):
     mode.add_argument("--report", action="store_true")
     mode.add_argument("--renew-session", action="store_true",
                       help="Renew only the explicitly confirmed public Coinbase session")
+    mode.add_argument("--reset-halt", action="store_true",
+                      help="Explicitly reset a Paper HALT after fresh public health checks")
+    parser.add_argument("--reason", help="Required audited reason for --reset-halt")
     parser.add_argument("--confirm-paper", action="store_true")
     parser.add_argument("--max-cycles", type=int)
     parser.add_argument("--display-output-dir", type=Path)
@@ -708,10 +711,17 @@ def main(argv=None):
         if args.display_output_dir and not args.start:
             raise ValueError("--display-output-dir requires --start")
         if args.renew_session:
-            if args.confirm_paper or args.max_cycles is not None or args.display_output_dir:
-                raise ValueError("--renew-session cannot be combined with start-only options")
+            if args.confirm_paper or args.max_cycles is not None or args.display_output_dir or args.reason:
+                raise ValueError("--renew-session cannot be combined with start/reset options")
             print(canonical(renew_session(args.workspace)), flush=True)
             return 0
+        if args.reset_halt:
+            if (not args.reason or args.confirm_paper or args.max_cycles is not None
+                    or args.display_output_dir):
+                raise ValueError("--reset-halt requires --reason and cannot be combined with start options")
+            return reset_halt(args.workspace, args.reason)
+        if args.reason:
+            raise ValueError("--reason is only valid with --reset-halt")
         if args.status or args.report:
             return paper_main(runner_args(args.workspace, "report" if args.report else "status"))
         if not args.workspace.expanduser().exists():
