@@ -641,22 +641,19 @@ def reset_halt(workspace, reason, *, feed=None, now=None):
     ))
 
 
-def runner_args(workspace, command, *, max_cycles=None, display_output_dir=None):
+def runner_args(workspace, command, *, max_cycles=None, display_output_dir=None,
+                reason=None, start_utc=None, end_utc=None, asof_utc=None):
     workspace = Path(workspace).expanduser().resolve()
-    profile = json.loads((workspace / "setup.json").read_text())
+    profile = json.loads(_read_regular(workspace / "setup.json"))
     if (profile["schema_version"] != 1 or profile["market"] != MARKET.key
             or profile["account"] != "bip-paper"):
         raise ValueError("Unknown setup profile")
     args = [command, "--paper-db", str(workspace / "paper.sqlite"),
             "--account", profile["account"], "--market", MARKET.key]
-    if command == "run":
-        args += ["--mode", "paper", "--confirm-paper", "--contracts", "1",
-                 "--store", str(workspace / "market.sqlite"),
+    if command in ("run", "reset-halt"):
+        args += ["--store", str(workspace / "market.sqlite"),
                  "--registry", str(workspace / "registry.sqlite"),
-                 "--strategy-id", "momentum", "--strategy-version", "1.0.0",
-                 "--count", "80", "--poll-seconds", "30", "--max-catch-up-bars", "80",
-                 "--audit-log", str(workspace / "audit.jsonl"),
-                 "--observation-workspace", str(workspace)]
+                 "--strategy-id", "momentum", "--strategy-version", "1.0.0"]
         for flag, name in (("contract-spec", "contract"), ("cost-scenario", "costs"),
                            ("calendar", "calendar"), ("risk-policy", "risk")):
             config_path = (
@@ -666,12 +663,26 @@ def runner_args(workspace, command, *, max_cycles=None, display_output_dir=None)
             )
             _read_regular(config_path)
             args += [f"--{flag}", str(config_path)]
-        if max_cycles is not None:
-            args += ["--max-cycles", str(max_cycles)]
-        if display_output_dir:
-            args += ["--display-output-dir", str(display_output_dir)]
+        if command == "run":
+            args += ["--mode", "paper", "--confirm-paper", "--contracts", "1",
+                     "--count", "80", "--poll-seconds", "30", "--max-catch-up-bars", "80",
+                     "--audit-log", str(workspace / "audit.jsonl"),
+                     "--observation-workspace", str(workspace)]
+            if max_cycles is not None:
+                args += ["--max-cycles", str(max_cycles)]
+            if display_output_dir:
+                args += ["--display-output-dir", str(display_output_dir)]
+        else:
+            if (not isinstance(reason, str) or len(reason.strip()) < 8
+                    or not all((start_utc, end_utc, asof_utc))):
+                raise ValueError("Explicit reset reason and fresh UTC data range required")
+            args += ["--clock-mode", "PUBLIC", "--reason", reason,
+                     "--start-utc", start_utc, "--end-utc", end_utc,
+                     "--asof-utc", asof_utc]
     elif command == "report":
         args += ["--output", str(workspace / "reports")]
+    elif command != "status":
+        raise ValueError("Unsupported Paper setup command")
     return args
 
 
