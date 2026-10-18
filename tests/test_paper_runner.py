@@ -5,7 +5,6 @@ from types import SimpleNamespace
 from urllib.error import HTTPError
 
 import pandas as pd
-
 import pytest
 from test_backtest import fixture
 
