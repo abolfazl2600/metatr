@@ -1,10 +1,10 @@
 //@version=6
 //@strategy_alert_message {{strategy.order.alert_message}}
 
-// BTC Futures Bot v1.5 — Pine Script v6
+// BTC Futures Bot v1.6 — Pine Script v6
 // Standalone TradingView research strategy. No broker API or live order placement.
 // IMPORTANT: M15 standard chart, linear USD/USDT-quoted contracts only.
-strategy("BTC Futures Bot | FA | v1.5",
+strategy("BTC Futures Bot | FA | v1.6",
      overlay = true,
      initial_capital = 100,
      currency = currency.USD,
@@ -171,7 +171,27 @@ deltaLongOK = not useDelta or (deltaReady and deltaPct > minDeltaPct)
 deltaShortOK = not useDelta or (deltaReady and deltaPct < -minDeltaPct)
 
 // ─────────────────────────────────────────────────────────────────────
-// 8. Symbol / timeframe guard; size = equity allocation × selected leverage
+// 8. Optional 24-hour high/low proximity filter — NEW entries only
+// ─────────────────────────────────────────────────────────────────────
+// The 96 completed 15m bars (including the confirmed signal candle) form
+// the rolling 24-hour high/low. No current/incomplete bar is used to enter.
+// A close within the configurable % distance of EITHER extreme is blocked.
+// This filter does not cancel exits, close positions, or alter protection.
+gRange = "۸. فیلتر محدوده سقف و کف ۲۴ ساعت"
+use24hRange = input.bool(true, "فعال‌سازی منع ورود نزدیک سقف/کف ۲۴ ساعت", group = gRange)
+rangeBufferPct = input.float(1.0, "فاصله ممنوع از سقف یا کف (%)",
+     minval = 0.1, maxval = 10.0, step = 0.1, group = gRange)
+float high24h = ta.highest(high, 96)
+float low24h = ta.lowest(low, 96)
+// On continuous 24/7 M15 data, 96 candles span exactly 24 hours.
+bool rangeReady = not na(time[95]) and time - time[95] == 95 * 15 * 60 * 1000 and
+     not na(high24h) and not na(low24h) and high24h > 0 and low24h > 0
+bool near24hHigh = rangeReady and math.abs(close - high24h) / high24h * 100 <= rangeBufferPct
+bool near24hLow = rangeReady and math.abs(close - low24h) / low24h * 100 <= rangeBufferPct
+bool rangeEntryOK = not use24hRange or (rangeReady and not near24hHigh and not near24hLow)
+
+// ─────────────────────────────────────────────────────────────────────
+// 9. Symbol / timeframe guard; size = equity allocation × selected leverage
 // ─────────────────────────────────────────────────────────────────────
 is15m = timeframe.isminutes and timeframe.multiplier == 15
 validQuote = syminfo.currency == "USD" or syminfo.currency == "USDT"
@@ -188,10 +208,10 @@ float shortQty = contractValue > 0 and qtyStep > 0 ?
 canEnter = is15m and validQuote and barstate.isconfirmed and
      strategy.position_size == 0 and strategy.equity > 0
 volumeOK = spikeOK and rvolOK
-enterLong = canEnter and longAllowed and rawLong and
+enterLong = canEnter and rangeEntryOK and longAllowed and rawLong and
      rsiValue >= rsiLongMin and volumeOK and deltaLongOK and
      not na(longQty) and longQty >= qtyStep
-enterShort = canEnter and shortAllowed and rawShort and
+enterShort = canEnter and rangeEntryOK and shortAllowed and rawShort and
      rsiValue <= rsiShortMax and volumeOK and deltaShortOK and
      not na(shortQty) and shortQty >= qtyStep
 
@@ -204,12 +224,12 @@ int slTicks = math.max(1,
      int(math.round(close * slPct / 100.0 / syminfo.mintick)))
 
 // ─────────────────────────────────────────────────────────────────────
-// 9. Entry orders and protective OCA exits
+// 10. Entry orders and protective OCA exits
 // ─────────────────────────────────────────────────────────────────────
 var string activeTradeId = ""
 var string tpAlert = ""
 var string slAlert = ""
-string baseJSON = '"schema":"btc-futures-v1","version":"1.5","symbol":"' +
+string baseJSON = '"schema":"btc-futures-v1","version":"1.6","symbol":"' +
      syminfo.tickerid + '","timeframe":"' + timeframe.period + '"'
 
 if enterLong
@@ -247,7 +267,7 @@ if enterShort
          alert_profit = tpAlert, alert_loss = slAlert)
 
 // ─────────────────────────────────────────────────────────────────────
-// 10. Position management:
+// 11. Position management:
 // (a) trend no longer aligned -> close;
 // (b) optional opposite *confirmed* 15m candle -> close;
 // (c) otherwise maintain exact TP/SL based on entry average.
@@ -302,9 +322,9 @@ if strategy.position_size < 0
              alert_profit = tpAlert, alert_loss = slAlert)
 
 // ─────────────────────────────────────────────────────────────────────
-// 11. Chart display and small Persian dashboard
+// 12. Chart display and small Persian dashboard
 // ─────────────────────────────────────────────────────────────────────
-gView = "۸. نمایش"
+gView = "۹. نمایش"
 showDash = input.bool(true, "نمایش داشبورد", group = gView)
 plot(emaFast, "EMA سریع", color = color.teal)
 plot(emaSlow, "EMA کند", color = color.orange)
@@ -315,7 +335,7 @@ plotshape(enterLong, title = "سیگنال لانگ", style = shape.triangleup,
 plotshape(enterShort, title = "سیگنال شورت", style = shape.triangledown,
      location = location.abovebar, color = color.red, size = size.small)
 
-var table dash = table.new(position.top_right, 2, 8, border_width = 1)
+var table dash = table.new(position.top_right, 2, 9, border_width = 1)
 string mText = monthlyBull ? "صعودی" : monthlyBear ? "نزولی" : "خنثی"
 string wText = weeklyBull ? "صعودی" : weeklyBear ? "نزولی" : "خنثی"
 string modeText = not is15m ? "فقط ۱۵ دقیقه" :
@@ -327,6 +347,11 @@ string rvolText = not useRvol ? "خاموش" :
      rvolReady ? str.tostring(rvol, "#.##") : "داده ناکافی"
 string spikeText = not useSpike ? "خاموش" :
      not spikeReady ? "داده ناکافی" : hasSpike ? "جهش حجم" : "عادی"
+string rangeText = not use24hRange ? "خاموش" :
+     not rangeReady ? "داده ناکافی" :
+     near24hHigh and near24hLow ? "نزدیک سقف/کف" :
+     near24hHigh ? "نزدیک سقف" :
+     near24hLow ? "نزدیک کف" : "ورود مجاز"
 string positionText = strategy.position_size > 0 ? "لانگ" :
      strategy.position_size < 0 ? "شورت" : "بدون پوزیشن"
 
@@ -349,5 +374,9 @@ if barstate.islast
         table.cell(dash, 0, 7, "Delta / TP / SL", bgcolor = color.black, text_color = color.white)
         table.cell(dash, 1, 7, deltaText + " | " + str.tostring(tpPct) + "% / " + str.tostring(slPct) + "%",
              bgcolor = color.black, text_color = color.white)
+        table.cell(dash, 0, 8, "محدوده ۲۴ ساعت", bgcolor = color.black, text_color = color.white)
+        table.cell(dash, 1, 8, rangeText,
+             bgcolor = not use24hRange ? color.gray : rangeEntryOK ? color.green : color.red,
+             text_color = color.white)
     else
-        table.clear(dash, 0, 0, 1, 7)
+        table.clear(dash, 0, 0, 1, 8)
