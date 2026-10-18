@@ -595,6 +595,8 @@ def renew_session(workspace, *, feed=None, now=None, before_commit_hook=None):
                 "paper_account_mutated": False,
                 "real_execution_available": False,
                 "renewal_event": str(final_dir / "renewal.json"),
+                "renewal_event_sha256": event_sha,
+                "after_setup_sha256": new_setup_sha,
             }
         finally:
             if stage.exists():
