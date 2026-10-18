@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 from dataclasses import replace
 from types import SimpleNamespace
@@ -205,6 +206,14 @@ def test_renew_session_publishes_verified_generation_without_mutating_paper(tmp_
     assert set(event["before_files"]) == {"setup", "contract", "calendar"}
     assert all((generation / item["path"]).is_file()
                for item in event["before_files"].values())
+    after_setup = generation / event["after_files"]["setup_path"]
+    assert after_setup.is_file()
+    assert hashlib.sha256(after_setup.read_bytes()).hexdigest() == (
+        event["after_files"]["setup_sha256"]
+    )
+    assert json.loads(after_setup.read_text())["active_session_generation"] == (
+        profile["active_session_generation"]
+    )
     assert (generation / "calendar.json").is_file()
     assert (generation / "contract.json").is_file()
     assert (generation / "public-metadata.json").is_file()
