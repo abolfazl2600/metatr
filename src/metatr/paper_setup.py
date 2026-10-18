@@ -1,13 +1,15 @@
 """Prepare a public-data PAPER scenario and optionally start its existing runner."""
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
 import sys
 import tempfile
 import time
-from dataclasses import asdict
+from dataclasses import asdict, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 
@@ -19,7 +21,8 @@ from metatr.dataset_quality import validate_dataset
 from metatr.exchanges.coinbase_futures import CoinbaseFuturesFeed
 from metatr.futures_store import FuturesSQLiteStore
 from metatr.model_registry import StrategyRegistry, StrategySpec
-from metatr.paper.risk import PaperRiskPolicy
+from metatr.paper.risk import PaperMarketState, PaperRiskPolicy, evaluate
+from metatr.paper.runner import WorkerAlreadyRunning, account_lock, checkpoint
 from metatr.paper.store import PaperStore
 from metatr.paper_cli import main as paper_main
 from metatr.research import canonical, digest, parse_market
@@ -35,7 +38,7 @@ def _body(value):
     return body
 
 
-def _capture_with_retry(feed, *, wait=time.sleep):
+def _capture_with_retry(feed, *, now=None, wait=time.sleep):
     """Retry transient public reads before creating any persistent Paper state.
 
     Deliberately do not retry 403/404/429: they require operator review and
@@ -44,7 +47,8 @@ def _capture_with_retry(feed, *, wait=time.sleep):
     """
     for attempt in range(3):
         try:
-            return feed.capture_candles(MARKET.product_id, "M15", 80)
+            kwargs = {"now": now} if now is not None else {}
+            return feed.capture_candles(MARKET.product_id, "M15", 80, **kwargs)
         except HTTPError as exc:
             if exc.code not in (500, 502, 503, 504) or attempt == 2:
                 raise ValueError(
