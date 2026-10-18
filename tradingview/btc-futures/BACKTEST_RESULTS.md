@@ -1,6 +1,6 @@
 # BTC Futures — Backtest results
 
-ثبت آزمایش‌های TradingView برای مقایسه کانفیگ‌ها. تا این تاریخ هنوز **هیچ نتیجه واقعی** ثبت نشده است.
+ثبت آزمایش‌های TradingView برای مقایسه کانفیگ‌ها. نتیجه‌ها فقط از بک‌تست یا شواهد واقعی کاربر ثبت می‌شوند؛ مقدارهای نامعلوم با «تأیید نشده» مشخص می‌شوند.
 
 ## Baseline — strategy.pine v1.6
 
@@ -29,7 +29,18 @@
 
 | Run ID | Code version | Symbol/exchange | Backtest period | Config changes | Trades | Win rate % | Net profit % | Profit factor | Max drawdown % | Avg trade | Evidence / Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| BT-001 | v1.5 | Binance BTC/USDT perpetual (exact ticker unverified) | 2026-08-01 to 2026-10-18 (date selector; timezone unverified) | 15m EMA cross; equity 95%; L 3x / S 1x; TP 1.0%, SL 1.0%; opposite-candle exit ON; monthly EMA 6/12, weekly EMA 10/30; **no 24h filter in v1.5** | 21 | 33.33 | +0.43 | 1.381 | 0.89 | Not reported | User screenshot (2026-10-18); partial config; see details below |
 | — | v1.6 | — | — | Baseline, 24h block ON at 1.0% | — | — | — | — | — | — | Not yet tested |
+
+## BT-001 — Screenshot-derived details (2026-10-18)
+
+- **Version:** `BTC Futures Bot | FA | v1.5` (visible both in chart legend and Strategy Tester). This is **not** the newer v1.6 filter evaluation.
+- **Market:** TradingView displays *Bitcoin / TetherUS PERPETUAL CONTRACT · 15 · Binance*; exact exchange symbol ID and whether standard candles were used were not supplied explicitly.
+- **Selected testing dates:** Aug 1, 2026 — Oct 18, 2026; date-selector timezone is not shown.
+- **Visible settings:** EMA crossover, enable Long/Short, exit on opposite closed M15 candle enabled, capital allocation 95%, Long leverage 3x, Short leverage 1x, TP 1% of price, SL 1% of price, monthly EMA 6/12 and weekly EMA 10/30. Other filters' enabled/disabled states, Strategy Properties overrides, and whether edits in the open Inputs dialog have been applied are **not independently verified**.
+- **Observed outputs:** initial capital 100 USD; net PnL +0.43 USD (+0.43%); gross profit +1.57 USD; gross loss 1.14 USD; 7 winning / 21 total closed trades (33.33%); Profit Factor 1.381; max drawdown 0.90 USD (0.89%); Buy & Hold +22.98% as displayed.
+- **Not captured:** List of Trades, individual entry/exit reasons, full active-filter states, Commission/Slippage from Properties, Bar Magnifier, average trade, out-of-sample evaluation. Do **not** treat these unknowns as confirmed defaults.
+- **Comparison warning:** BT-001 uses different short leverage and TP than v1.5/v1.6 defaults. To isolate the new 24h exclusion filter, hold *all other Inputs and Properties* identical between v1.6-filter-ON and v1.6-filter-OFF trials.
 
 ## Reporting format
 
