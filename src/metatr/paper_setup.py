@@ -406,8 +406,9 @@ def renew_session(workspace, *, feed=None, now=None, before_commit_hook=None):
         first = capture.bars.index[0]
         if first < opened or end > closed:
             raise ValueError("PUBLIC_CAPTURE_OUTSIDE_CONFIRMED_SESSION")
-        if calendar.version == old_calendar.version:
-            raise ValueError("PUBLIC_SESSION_UNCHANGED")
+        # A session may remain open across multiple refreshes. An unchanged calendar
+        # version is not evidence of stale candles: freshness, completeness, checkpoint
+        # continuity, contract identity and account health are validated independently.
 
         # Structural contract identity must stay the same; only the sourced calendar pin changes.
         old_contract.validate(capture.product, captured_at)
@@ -534,6 +535,11 @@ def renew_session(workspace, *, feed=None, now=None, before_commit_hook=None):
                 "session_close_utc": closed.isoformat(),
                 "calendar_version": calendar.version,
                 "previous_calendar_version": old_calendar.version,
+                "session_transition": (
+                    "UNCHANGED_SESSION_REFRESH"
+                    if calendar.version == old_calendar.version
+                    else "NEW_SESSION_VERSION"
+                ),
                 "contract_fingerprint": contract.fingerprint,
                 "contract_native_metadata_sha256": contract.metadata_sha256,
                 "previous_profile_sha256": old_setup_sha,
@@ -594,6 +600,11 @@ def renew_session(workspace, *, feed=None, now=None, before_commit_hook=None):
                 "session_coverage_start_utc": opened.isoformat(),
                 "session_coverage_end_utc": closed.isoformat(),
                 "calendar_version": calendar.version,
+                "session_transition": (
+                    "UNCHANGED_SESSION_REFRESH"
+                    if calendar.version == old_calendar.version
+                    else "NEW_SESSION_VERSION"
+                ),
                 "paper_halted": bool(state["halted"]),
                 "halt_reset": False,
                 "paper_account_mutated": False,

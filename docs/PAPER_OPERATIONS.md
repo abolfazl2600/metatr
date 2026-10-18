@@ -304,8 +304,13 @@ reason of at least eight characters:
 python3 -m metatr.paper_setup --workspace "$WORKSPACE" --reset-halt --reason "Reviewed outage and verified current session and Paper risk health"
 ```
 
-Start the worker only after reset succeeds. If renewal reports
-`PUBLIC_SESSION_UNCHANGED`, `PUBLIC_SESSION_CLOSED`, `PUBLIC_DATA_NOT_READY`,
+An unchanged session boundary is valid when Coinbase still reports the session
+open: renewal can refresh candles within that same session. The command records
+`UNCHANGED_SESSION_REFRESH` versus `NEW_SESSION_VERSION` in its evidence.
+Freshness, candle completeness, checkpoint continuity, risk, and contract checks
+remain mandatory; unchanged session metadata never permits stale candles.
+
+If renewal reports `PUBLIC_SESSION_CLOSED`, `PUBLIC_DATA_NOT_READY`,
 `UNOBSERVED_CHECKPOINT_GAP`, a risk-gate failure, unknown order state or a
 contract pin mismatch, do not bypass the check. Leave the account stopped and
 review the evidence and logs. A failed renewal neither resets HALT nor changes

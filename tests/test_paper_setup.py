@@ -229,11 +229,46 @@ def test_renew_session_publishes_verified_generation_without_mutating_paper(tmp_
     assert (root / "setup.json").read_bytes() != setup_before
 
 
-def test_renew_session_refuses_unchanged_session_without_repointing_setup(tmp_path):
+def test_renew_session_allows_fresh_refresh_with_unchanged_session(tmp_path):
     root, initial = setup_for_renewal(tmp_path)
+    renewed = copy.deepcopy(initial)
+    # Preserve every previously verified candle byte-for-byte and append one
+    # new M15 candle. Shifting all timestamps would simulate conflicting history.
+    new_timestamp = renewed.bars.index[-1] + pd.Timedelta(minutes=15)
+    new_row = renewed.bars.iloc[-1].copy()
+    renewed.bars = renewed.bars.iloc[1:].copy()
+    renewed.bars = pd.concat([
+        renewed.bars,
+        pd.DataFrame([new_row], index=pd.DatetimeIndex([new_timestamp])),
+    ])
+    renewed.captured_at = renewed.captured_at + pd.Timedelta(minutes=15)
+    renewed.raw_payload = {
+        "candles": [
+            {"start": str(int(timestamp.timestamp())),
+             **{column: str(row[column]) for column in row.index}}
+            for timestamp, row in renewed.bars.iterrows()
+        ]
+    }
+    before = PaperStore(root / "paper.sqlite").inspect("bip-paper")
+    result = renew_session(root, feed=renewal_feed(renewed), now=renewed.captured_at)
+    profile = json.loads((root / "setup.json").read_text())
+    generation = root / profile["active_session_generation"]
+    event_path = next(generation.glob("renewal-*.json"))
+    event = json.loads(event_path.read_text())
+    assert result["status"] == "SESSION_RENEWED_PAPER_ONLY"
+    assert result["session_transition"] == "UNCHANGED_SESSION_REFRESH"
+    assert event["session_transition"] == "UNCHANGED_SESSION_REFRESH"
+    assert event["calendar_version"] == event["previous_calendar_version"]
+    assert PaperStore(root / "paper.sqlite").inspect("bip-paper") == before
+
+
+def test_renew_session_still_rejects_stale_candles_with_unchanged_session(tmp_path):
+    root, initial = setup_for_renewal(tmp_path)
+    stale = copy.deepcopy(initial)
+    stale.captured_at = stale.captured_at + pd.Timedelta(hours=8)
     before = (root / "setup.json").read_bytes()
-    with pytest.raises(ValueError, match="PUBLIC_SESSION_UNCHANGED"):
-        renew_session(root, feed=renewal_feed(initial), now=initial.captured_at)
+    with pytest.raises(ValueError, match="PUBLIC_CAPTURE_STALE_OR_INCOMPLETE"):
+        renew_session(root, feed=renewal_feed(stale), now=stale.captured_at)
     assert (root / "setup.json").read_bytes() == before
     assert not (root / "session-generations").exists()
 
