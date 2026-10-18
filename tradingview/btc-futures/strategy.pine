@@ -1,10 +1,10 @@
 //@version=6
 //@strategy_alert_message {{strategy.order.alert_message}}
 
-// BTC Futures Bot v1.4 — Pine Script v6
+// BTC Futures Bot v1.5 — Pine Script v6
 // Standalone TradingView research strategy. No broker API or live order placement.
 // IMPORTANT: M15 standard chart, linear USD/USDT-quoted contracts only.
-strategy("BTC Futures Bot | FA | v1.4",
+strategy("BTC Futures Bot | FA | v1.5",
      overlay = true,
      initial_capital = 100,
      currency = currency.USD,
@@ -36,40 +36,41 @@ exitOpposite = input.bool(true, "خروج پس از بسته‌شدن کندل �
 gRisk = "۲. سرمایه، اهرم و خروج"
 capitalPct = input.float(95.0, "درصد سرمایه در هر معامله",
      minval = 1, maxval = 95, step = 1, group = gRisk)
-longLev = input.float(4.0, "اهرم لانگ", minval = 1, maxval = 10,
+longLev = input.float(3.0, "اهرم لانگ", minval = 1, maxval = 10,
      step = 1, group = gRisk)
-shortLev = input.float(1.0, "اهرم شورت", minval = 1, maxval = 10,
+shortLev = input.float(3.0, "اهرم شورت", minval = 1, maxval = 10,
      step = 1, group = gRisk)
-tpPct = input.float(1.0, "حد سود قیمتی (%)", minval = 0.1,
+tpPct = input.float(0.5, "حد سود قیمتی (%)", minval = 0.1,
      maxval = 30, step = 0.1, group = gRisk)
 slPct = input.float(1.0, "حد ضرر قیمتی (%)", minval = 0.1,
      maxval = 30, step = 0.1, group = gRisk)
 
 // ─────────────────────────────────────────────────────────────────────
-// 3. Confirmed daily + weekly regime, no unfinished higher-TF candles
+// 3. Confirmed monthly + weekly regime, no unfinished higher-TF candles
 // ─────────────────────────────────────────────────────────────────────
-gTrend = "۳. تشخیص روند روزانه و هفتگی"
-dayFastLen = input.int(20, "EMA سریع روزانه", minval = 1, group = gTrend)
-daySlowLen = input.int(50, "EMA کند روزانه", minval = 2, group = gTrend)
+gTrend = "۳. تشخیص روند ماهانه و هفتگی"
+monthFastLen = input.int(6, "EMA سریع ماهانه", minval = 1, group = gTrend)
+monthSlowLen = input.int(12, "EMA کند ماهانه", minval = 2, group = gTrend)
 weekFastLen = input.int(10, "EMA سریع هفتگی", minval = 1, group = gTrend)
 weekSlowLen = input.int(30, "EMA کند هفتگی", minval = 2, group = gTrend)
 
-[dClose, dFast, dSlow] = request.security(
-     syminfo.tickerid, "D",
-     [close[1], ta.ema(close, dayFastLen)[1], ta.ema(close, daySlowLen)[1]],
+// Closed monthly candle only; [1] avoids unfinished higher-timeframe data.
+[mClose, mFast, mSlow] = request.security(
+     syminfo.tickerid, "M",
+     [close[1], ta.ema(close, monthFastLen)[1], ta.ema(close, monthSlowLen)[1]],
      lookahead = barmerge.lookahead_on)
 [wClose, wFast, wSlow] = request.security(
      syminfo.tickerid, "W",
      [close[1], ta.ema(close, weekFastLen)[1], ta.ema(close, weekSlowLen)[1]],
      lookahead = barmerge.lookahead_on)
 
-dailyBull = not na(dClose) and not na(dSlow) and dClose > dFast and dFast > dSlow
-dailyBear = not na(dClose) and not na(dSlow) and dClose < dFast and dFast < dSlow
+monthlyBull = not na(mClose) and not na(mFast) and not na(mSlow) and mClose > mFast and mFast > mSlow
+monthlyBear = not na(mClose) and not na(mFast) and not na(mSlow) and mClose < mFast and mFast < mSlow
 weeklyBull = not na(wClose) and not na(wSlow) and wClose > wFast and wFast > wSlow
 weeklyBear = not na(wClose) and not na(wSlow) and wClose < wFast and wFast < wSlow
 
-longAllowed = allowLong and dailyBull and weeklyBull
-shortAllowed = allowShort and dailyBear and weeklyBear
+longAllowed = allowLong and monthlyBull and weeklyBull
+shortAllowed = allowShort and monthlyBear and weeklyBear
 
 // ─────────────────────────────────────────────────────────────────────
 // 4. M15 entry strategies
@@ -208,7 +209,7 @@ int slTicks = math.max(1,
 var string activeTradeId = ""
 var string tpAlert = ""
 var string slAlert = ""
-string baseJSON = '"schema":"btc-futures-v1","version":"1.4","symbol":"' +
+string baseJSON = '"schema":"btc-futures-v1","version":"1.5","symbol":"' +
      syminfo.tickerid + '","timeframe":"' + timeframe.period + '"'
 
 if enterLong
@@ -315,7 +316,7 @@ plotshape(enterShort, title = "سیگنال شورت", style = shape.triangledow
      location = location.abovebar, color = color.red, size = size.small)
 
 var table dash = table.new(position.top_right, 2, 8, border_width = 1)
-string dText = dailyBull ? "صعودی" : dailyBear ? "نزولی" : "خنثی"
+string mText = monthlyBull ? "صعودی" : monthlyBear ? "نزولی" : "خنثی"
 string wText = weeklyBull ? "صعودی" : weeklyBear ? "نزولی" : "خنثی"
 string modeText = not is15m ? "فقط ۱۵ دقیقه" :
      not validQuote ? "نماد نامعتبر" :
@@ -331,8 +332,8 @@ string positionText = strategy.position_size > 0 ? "لانگ" :
 
 if barstate.islast
     if showDash
-        table.cell(dash, 0, 0, "روزانه", bgcolor = color.black, text_color = color.white)
-        table.cell(dash, 1, 0, dText, bgcolor = dailyBull ? color.green : dailyBear ? color.red : color.gray, text_color = color.white)
+        table.cell(dash, 0, 0, "ماهانه", bgcolor = color.black, text_color = color.white)
+        table.cell(dash, 1, 0, mText, bgcolor = monthlyBull ? color.green : monthlyBear ? color.red : color.gray, text_color = color.white)
         table.cell(dash, 0, 1, "هفتگی", bgcolor = color.black, text_color = color.white)
         table.cell(dash, 1, 1, wText, bgcolor = weeklyBull ? color.green : weeklyBear ? color.red : color.gray, text_color = color.white)
         table.cell(dash, 0, 2, "معامله مجاز", bgcolor = color.black, text_color = color.white)
