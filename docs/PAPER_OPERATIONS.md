@@ -320,3 +320,20 @@ This is a real public API smoke check, not an offline fixture. It uses no API ke
 or private endpoint. CI verifies offline safety gates; the current-session
 response and multi-day continuity still require operator observation. It does
 not establish 14-day acceptance or profitability.
+
+
+### Public Paper restart and stale checkpoint age
+
+`stale_age_seconds` is the age of the last **committed Paper candle checkpoint**,
+not the age of the most recently downloaded Coinbase response. Compare it with
+`source_received_utc`, `last_committed_candle_close_utc`, and the latest health
+reason before deciding whether the feed is stale.
+
+On public startup, the runner first checks the full latest dataset against the
+actual current clock, source provenance, session calendar, contract, and risk
+policy. Only if that gate passes may it process continuous missed bars. Old
+catch-up bars are evaluated at their own close-time clock; recent bars retain the
+current-clock public checks. The catch-up limit and continuous candle checks still
+apply. Accepted Paper intents are expired rather than filled at or after their
+explicit expiry time. This is simulated recovery only; it does not imply that a
+real exchange order existed or was filled.

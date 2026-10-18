@@ -234,6 +234,33 @@ class PaperRunner:
                 raise ValueError("CATCHUP_GAP")
             if len(positions) > max_catch_up_bars:
                 raise ValueError("CATCHUP_LIMIT")
+            # Validate the newest public capture against the real clock before any
+            # catch-up work. Historical prefixes are evaluated at their own bar-close
+            # clock below; comparing each old prefix to wall-clock time falsely marks
+            # a healthy, fresh capture as stale and halts every restarted worker.
+            if mode == "PUBLIC":
+                current_state = self.store.inspect(self.account)
+                current_health = evaluate(
+                    None, current_state, PaperMarketState(dataset, costs, mode),
+                    policy, contract, failure_at,
+                )
+                if current_health.action != "APPROVE":
+                    body = {"type": "HEALTH", "phase": "PUBLIC_CAPTURE_GATE",
+                            **current_health.to_dict()}
+                    self.store.append(
+                        self.account, "RISK_EVENT", digest(body), body, failure_at
+                    )
+                    self.store.halt(
+                        self.account, ";".join(current_health.reasons), at_utc=failure_at
+                    )
+                    self.store.stop_pending(
+                        self.account, "HEALTH_HALT", at_utc=failure_at
+                    )
+                    self.store.reconcile(self.account)
+                    return {
+                        "processed_bars": 0,
+                        **status(self.store, self.account, failure_at),
+                    }
             pins = {
                 "execution": "PAPER_ONLY",
                 "mode": mode,
@@ -262,22 +289,23 @@ class PaperRunner:
             run_id = self.store.register_run(self.account, pins, at_utc=at)
             self.simulator.risk.pin_policy(policy, failure_at)
             processed, latest_decision = 0, None
-            # Even an idle public poll must not claim healthy operation on stale data.
-            if not positions and mode == "PUBLIC":
-                health = PaperMarketState(dataset, costs, mode)
-                result = evaluate(
-                    None, self.store.inspect(self.account), health, policy, contract, failure_at
-                )
-                if result.action != "APPROVE":
-                    self.store.halt(self.account, ";".join(result.reasons), at_utc=failure_at)
-                    self.store.stop_pending(self.account, "HEALTH_HALT", at_utc=failure_at)
             for pos in positions:
                 opened = bars.index[pos]
                 closed = opened + pd.Timedelta(seconds=seconds)
-                now = stamp(now_utc) if mode == "PUBLIC" else closed
-                failure_at = now
+                observed_now = stamp(now_utc) if mode == "PUBLIC" else closed
+                failure_at = observed_now
+                # Missed bars are simulated at their event-time clock only after the
+                # full current public dataset has passed the real-clock health gate.
+                # Recent bars still use PUBLIC checks against the actual clock.
+                historical_catchup = (
+                    mode == "PUBLIC"
+                    and (observed_now - closed).total_seconds()
+                    > policy.max_stale_bars * seconds
+                )
+                bar_now = closed if historical_catchup or mode != "PUBLIC" else observed_now
+                bar_mode = "REPLAY" if historical_catchup else mode
                 prefix = slice_dataset(dataset, 0, pos + 1)
-                health = PaperMarketState(prefix, costs, mode)
+                health = PaperMarketState(prefix, costs, bar_mode)
                 correlation = digest(
                     {
                         "account": self.account,
@@ -291,26 +319,32 @@ class PaperRunner:
                     correlation,
                     market=dataset.market.key,
                     market_close_utc=closed.isoformat(),
-                    observed_utc=now.isoformat(),
+                    observed_utc=observed_now.isoformat(),
                 )
                 check = evaluate(
-                    None, self.store.inspect(self.account), health, policy, contract, now
+                    None, self.store.inspect(self.account), health, policy, contract, bar_now
                 )
                 check_body = {"type": "HEALTH", **check.to_dict()}
-                self.store.append(self.account, "RISK_EVENT", digest(check_body), check_body, now)
+                self.store.append(
+                    self.account, "RISK_EVENT", digest(check_body), check_body, bar_now
+                )
                 if check.action != "APPROVE":
-                    self.store.halt(self.account, ";".join(check.reasons), at_utc=now)
-                    self.store.stop_pending(self.account, "HEALTH_HALT", at_utc=now)
+                    self.store.halt(self.account, ";".join(check.reasons), at_utc=bar_now)
+                    self.store.stop_pending(
+                        self.account, "HEALTH_HALT", at_utc=bar_now
+                    )
                     break
                 for order in self.store.inspect(self.account)["orders"]:
                     if order["status"] == "ACCEPTED":
                         self.simulator.process_next_bar(
-                            self.account, order["intent_id"], health, policy, contract, now
+                            self.account, order["intent_id"], health, policy, contract, bar_now
                         )
                 if stage_hook:
                     stage_hook("after_fills", closed)
                 if self.store.inspect(self.account)["halted"]:
-                    self.store.stop_pending(self.account, "FILL_RISK_HALT", at_utc=now)
+                    self.store.stop_pending(
+                        self.account, "FILL_RISK_HALT", at_utc=bar_now
+                    )
                     break
                 self.store.funding(self.account, run_id, str(bars.iloc[pos].close), at_utc=closed)
                 if stage_hook:
@@ -365,7 +399,7 @@ class PaperRunner:
                         data_sha256=prefix.data_sha256,
                     )
                     accepted = self.simulator.approve(
-                        self.account, intent_id, health, policy, contract, now
+                        self.account, intent_id, health, policy, contract, bar_now
                     )
                     if accepted != "ACCEPTED":
                         decision = replace(

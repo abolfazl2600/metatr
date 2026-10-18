@@ -89,6 +89,12 @@ class PaperExecutionSimulator:
             return None
         if now < opened + pd.Timedelta(seconds=seconds):
             return None
+        expires_at = intent.get("expires_at_utc")
+        if expires_at is not None and now >= stamp(expires_at):
+            self.store.transition(
+                account, intent_id, "EXPIRED", at_utc=now, reason="INTENT_EXPIRED"
+            )
+            return None
         recheck = self.risk.assess(
             account, intent_id, market_state, policy, contract, now, phase="fill"
         )
