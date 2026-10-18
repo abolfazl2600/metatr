@@ -195,7 +195,12 @@ def test_renew_session_publishes_verified_generation_without_mutating_paper(tmp_
     result = renew_session(root, feed=renewal_feed(renewed), now=renewed.captured_at)
     profile = json.loads((root / "setup.json").read_text())
     generation = root / profile["active_session_generation"]
-    event = json.loads((generation / "renewal.json").read_text())
+    event_paths = list(generation.glob("renewal-*.json"))
+    assert len(event_paths) == 1
+    event_path = event_paths[0]
+    event_raw = event_path.read_bytes()
+    assert event_path.stem == "renewal-" + hashlib.sha256(event_raw).hexdigest()
+    event = json.loads(event_raw)
     assert result["status"] == "SESSION_RENEWED_PAPER_ONLY"
     assert profile["active_session_generation"].startswith("session-generations/")
     assert profile["contract_sha256"] == event["contract_fingerprint"]
