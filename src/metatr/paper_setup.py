@@ -655,6 +655,19 @@ def reset_halt(workspace, reason, *, feed=None, now=None):
     paper = PaperStore(workspace / "paper.sqlite")
     paper.reconcile(profile["account"])
     state = paper.inspect(profile["account"])
+    if state["market"] != MARKET.key or state["currency"] != policy.currency:
+        raise ValueError("PAPER_ACCOUNT_MARKET_MISMATCH")
+    registry = StrategyRegistry(workspace / "registry.sqlite")
+    spec = registry.resolve(MARKET, "momentum", "1.0.0")
+    if spec.status == "retired":
+        raise ValueError("MODEL_RETIRED")
+    if state["runs"]:
+        pins = state["runs"][-1]["pins"]
+        if (pins.get("strategy_id") != spec.strategy_id
+                or pins.get("strategy_version") != spec.version
+                or pins.get("strategy_config_sha256") != spec.config_sha256
+                or pins.get("risk_policy_sha256") != policy.fingerprint):
+            raise ValueError("PAPER_MODEL_OR_RISK_PIN_MISMATCH")
     if not state["halted"]:
         raise ValueError("Account is not halted")
     _checkpoint_continuity(state, dataset)
